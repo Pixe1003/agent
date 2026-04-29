@@ -193,7 +193,7 @@ schedulers-own
 ;;----------------------------------------------------------------------------;;
 to setup
   clear-all
-  py:setup py:python
+  py:setup ".\\.venv\\Scripts\\python.exe"
   (py:run
     "import numpy as np"
     ;;"from sklean.linear_model import LinearRegression"

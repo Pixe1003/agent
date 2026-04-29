@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE experiments SYSTEM "behaviorspace.dtd">
+<experiments>
+  <experiment name="agent-100tick" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <timeLimit steps="100"/>
+    <metric>ticks</metric>
+    <metric>total-usage-count</metric>
+    <metric>ai-usage-count</metric>
+    <metric>sys-service-rejection-counter</metric>
+    <enumeratedValueSet variable="service-placement-algorithm">
+      <value value="&quot;AI-phase2&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="total-services">
+      <value value="80"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="service-generation-speed">
+      <value value="20"/>
+    </enumeratedValueSet>
+  </experiment>
+</experiments>

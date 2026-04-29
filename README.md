@@ -44,15 +44,24 @@ The model file now imports `agent_phase1` during `setup` and calls
 free-text LLaMA implementation is preserved as `find-AI-server-legacy` for
 later benchmark comparisons.
 
-If NetLogo starts from a different working directory, replace `os.getcwd()` in
-the setup block with the absolute parent directory that contains
-`agent_phase1/`.
+The current local NetLogo install is at `D:\NETLOGO`. Run the 100-tick headless
+smoke test from the project root:
+
+```powershell
+& 'D:\NETLOGO\netlogo-headless.bat' `
+  --model 'D:\Users\12057\Desktop\agent\2143512_Jiale Miao_2025_Supplementary.nlogo' `
+  --setup-file 'D:\Users\12057\Desktop\agent\benchmark\netlogo_100tick_smoke.xml' `
+  --experiment 'agent-100tick' `
+  --table -
+```
+
+The model uses `py:setup ".\\.venv\\Scripts\\python.exe"`, so create and install
+the local virtual environment before launching NetLogo.
 
 ## Known Limitations
 
-- NetLogo GUI/Headless was not found in common local install paths, so the
-  NetLogo 100-tick smoke test still needs to be run manually after installing
-  or locating NetLogo.
+- NetLogo headless has been verified from `D:\NETLOGO` with the 100-tick
+  `AI-phase2` smoke experiment.
 - Phase 2/3 currently use deterministic scheduling logic. This is intentional:
   the graph, memory, trace, benchmark, and SFT data flow are now testable before
   replacing the scheduler internals with live LangGraph/ReAct LLM calls.

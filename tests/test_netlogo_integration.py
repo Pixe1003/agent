@@ -8,6 +8,7 @@ NLOGO = ROOT / "2143512_Jiale Miao_2025_Supplementary.nlogo"
 def test_netlogo_uses_phase1_agent_entrypoint_and_keeps_legacy_reporter():
     text = NLOGO.read_text(encoding="utf-8")
 
+    assert 'py:setup ".\\\\.venv\\\\Scripts\\\\python.exe"' in text
     assert "from agent_phase1 import init_agent, schedule_service, last_decision_summary" in text
     assert "from agent_phase2 import init_agent as init_agent_phase2" in text
     assert "from agent_phase3 import init_agent as init_agent_phase3" in text
