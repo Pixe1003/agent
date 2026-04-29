@@ -16,8 +16,6 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
 from pydantic import ValidationError
 
 from .schemas import (
@@ -62,6 +60,14 @@ def init_agent(
     )
     if base_url:
         kwargs["base_url"] = base_url
+
+    try:
+        from langchain_ollama import ChatOllama
+    except ImportError as e:
+        raise RuntimeError(
+            "LangChain/Ollama dependencies are missing. "
+            "Run: pip install -r agent_phase1/requirements.txt"
+        ) from e
 
     base_llm = ChatOllama(**kwargs)
     # bind_tools: 把两个 Pydantic 类注册为可调用工具
@@ -130,10 +136,7 @@ def schedule_service(servers_raw: list, service_req_raw: list) -> int:
         )
         return -1
 
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=render_cluster_state(ctx)),
-    ]
+    messages = _build_messages(ctx)
 
     try:
         response = _LLM.invoke(messages)
@@ -151,15 +154,14 @@ def schedule_service(servers_raw: list, service_req_raw: list) -> int:
     tool_calls = getattr(response, "tool_calls", None) or []
 
     if not tool_calls:
-        # 模型输出了自由文本，没走 tool —— 兜底
-        _LAST_DECISION = SchedulingDecision(
-            action="fallback",
-            reasoning="No tool call in response (model produced free text).",
-            latency_ms=(time.perf_counter() - t0) * 1000,
-            tool_call_succeeded=False,
+        # 模型输出了自由文本，没走 tool。为了实机演示可用，启用确定性安全兜底；
+        # telemetry 仍标记 tool_call_succeeded=False，benchmark 能看出不是 LLM 成功。
+        return _deterministic_safety_fallback(
+            ctx,
+            t0=t0,
+            reason="No tool call in response (model produced free text); deterministic safety fallback used.",
             raw_llm_response=str(getattr(response, "content", ""))[:500],
         )
-        return -1
 
     tc = tool_calls[0]  # 只取第一个 tool call
     tool_name = tc.get("name", "")
@@ -240,3 +242,64 @@ def last_decision_dict() -> dict:
     if _LAST_DECISION is None:
         return {}
     return _LAST_DECISION.model_dump()
+
+
+def _build_messages(ctx: SchedulingContext) -> list[Any]:
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        return [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=render_cluster_state(ctx)),
+        ]
+    except ImportError:
+        return [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": render_cluster_state(ctx)},
+        ]
+
+
+def _deterministic_safety_fallback(
+    ctx: SchedulingContext,
+    *,
+    t0: float,
+    reason: str,
+    raw_llm_response: str | None = None,
+) -> int:
+    global _LAST_DECISION
+    candidates = [
+        server
+        for server in ctx.servers
+        if server.cpu_free_pct >= ctx.service.cpu_pct
+        and server.ram_free_pct >= ctx.service.ram_pct
+        and server.net_free_pct >= ctx.service.net_pct
+    ]
+    if not candidates:
+        _LAST_DECISION = SchedulingDecision(
+            action="reject",
+            reasoning=f"{reason} No valid server exists.",
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            tool_call_succeeded=False,
+            raw_llm_response=raw_llm_response,
+        )
+        return -2
+
+    def score(server: ServerSnapshot) -> tuple[float, float, int]:
+        residual = [
+            server.cpu_free_pct - ctx.service.cpu_pct,
+            server.ram_free_pct - ctx.service.ram_pct,
+            server.net_free_pct - ctx.service.net_pct,
+        ]
+        spread = max(residual) - min(residual)
+        return (spread, sum(residual), server.server_id)
+
+    chosen = min(candidates, key=score)
+    _LAST_DECISION = SchedulingDecision(
+        action="select",
+        server_id=chosen.server_id,
+        reasoning=f"{reason} Selected server {chosen.server_id}.",
+        latency_ms=(time.perf_counter() - t0) * 1000,
+        tool_call_succeeded=False,
+        raw_llm_response=raw_llm_response,
+    )
+    return chosen.server_id

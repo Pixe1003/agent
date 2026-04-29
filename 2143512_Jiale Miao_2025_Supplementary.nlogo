@@ -315,15 +315,14 @@ to setup
 
 
   (py:run
-    "from langchain_core.prompts import ChatPromptTemplate"
-    "from langchain_ollama.llms import OllamaLLM"
-    "template = \"Question: {question} Answer: value only.\""
-
-    "prompt = ChatPromptTemplate.from_template(template)"
-
-    "model = OllamaLLM(model=\"llama3.2:latest\")"
-
-    "chain = prompt | model"
+    "import sys, os"
+    "sys.path.insert(0, os.getcwd())"
+    "from agent_phase1 import init_agent, schedule_service, last_decision_summary"
+    "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2"
+    "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3"
+    "init_agent(model_name='qwen3:8b', temperature=0.1)"
+    "init_agent_phase2(model_name='heuristic')"
+    "init_agent_phase3(model_name='heuristic')"
   )
 
   reset-ticks
@@ -1160,6 +1159,27 @@ to-report find-candidate [ the-server-set the-service ]
       [ set candidate find-AI-server the-server-set the-service ]
 
     ]
+    service-placement-algorithm = "AI-phase1"
+    [
+      ifelse ticks < 10
+      [ set candidate find-first-fit-server the-server-set the-service ]
+      [ set candidate find-AI-server the-server-set the-service ]
+
+    ]
+    service-placement-algorithm = "AI-phase2"
+    [
+      ifelse ticks < 10
+      [ set candidate find-first-fit-server the-server-set the-service ]
+      [ set candidate find-AI-phase2-server the-server-set the-service ]
+
+    ]
+    service-placement-algorithm = "AI-phase3"
+    [
+      ifelse ticks < 10
+      [ set candidate find-first-fit-server the-server-set the-service ]
+      [ set candidate find-AI-phase3-server the-server-set the-service ]
+
+    ]
 
   )
 
@@ -1171,6 +1191,104 @@ end
 
 
 to-report find-AI-server [ the-server-set the-service ]
+  ;; 总调用次数 +1
+  set total-usage-count total-usage-count + 1
+
+  let svrIDs [who] of servers
+  let servers-data []
+  let n min list 10 length svrIDs
+
+  let i 0
+  while [ i < n ] [
+    let svr server (item i svrIDs)
+    let sid [who] of svr
+    let cpu-free-pct (1 - ([ops-now] of svr / [ops-phy] of svr)) * 100
+    let ram-free-pct (1 - ([mem-now] of svr / [mem-phy] of svr)) * 100
+    let net-free-pct (1 - ([net-now] of svr / [net-phy] of svr)) * 100
+    set servers-data lput (list sid cpu-free-pct ram-free-pct net-free-pct) servers-data
+    set i i + 1
+  ]
+
+  let ref-svr server (item 0 svrIDs)
+  let cpu-req-pct ([ops-cnf] of the-service / [ops-phy] of ref-svr) * 100
+  let ram-req-pct ([mem-cnf] of the-service / [mem-phy] of ref-svr) * 100
+  let net-req-pct ([net-cnf] of the-service / [net-phy] of ref-svr) * 100
+  let service-data (list cpu-req-pct ram-req-pct net-req-pct)
+
+  py:set "servers_raw" servers-data
+  py:set "service_raw" service-data
+  let sid py:runresult "schedule_service(servers_raw, service_raw)"
+
+  (ifelse
+    sid >= 0 [
+      set ai-usage-count ai-usage-count + 1
+      report server sid
+    ]
+    sid = -2 [
+      report nobody
+    ]
+    [
+      report find-balanced-fit-server the-server-set the-service
+    ]
+  )
+end
+
+
+to-report find-AI-phase2-server [ the-server-set the-service ]
+  report find-AI-python-server the-server-set the-service "schedule_service_phase2"
+end
+
+
+to-report find-AI-phase3-server [ the-server-set the-service ]
+  report find-AI-python-server the-server-set the-service "schedule_service_phase3"
+end
+
+
+to-report find-AI-python-server [ the-server-set the-service python-scheduler-name ]
+  ;; 总调用次数 +1
+  set total-usage-count total-usage-count + 1
+
+  let svrIDs [who] of servers
+  let servers-data []
+  let n min list 10 length svrIDs
+
+  let i 0
+  while [ i < n ] [
+    let svr server (item i svrIDs)
+    let sid [who] of svr
+    let cpu-free-pct (1 - ([ops-now] of svr / [ops-phy] of svr)) * 100
+    let ram-free-pct (1 - ([mem-now] of svr / [mem-phy] of svr)) * 100
+    let net-free-pct (1 - ([net-now] of svr / [net-phy] of svr)) * 100
+    set servers-data lput (list sid cpu-free-pct ram-free-pct net-free-pct) servers-data
+    set i i + 1
+  ]
+
+  let ref-svr server (item 0 svrIDs)
+  let cpu-req-pct ([ops-cnf] of the-service / [ops-phy] of ref-svr) * 100
+  let ram-req-pct ([mem-cnf] of the-service / [mem-phy] of ref-svr) * 100
+  let net-req-pct ([net-cnf] of the-service / [net-phy] of ref-svr) * 100
+  let service-data (list cpu-req-pct ram-req-pct net-req-pct)
+
+  py:set "servers_raw" servers-data
+  py:set "service_raw" service-data
+  let sid py:runresult (word python-scheduler-name "(servers_raw, service_raw)")
+
+  (ifelse
+    sid >= 0 [
+      set ai-usage-count ai-usage-count + 1
+      report server sid
+    ]
+    sid = -2 [
+      report nobody
+    ]
+    [
+      report find-balanced-fit-server the-server-set the-service
+    ]
+  )
+end
+
+
+to-report find-AI-server-legacy [ the-server-set the-service ]
   ;; 总调用次数 +1
   set total-usage-count total-usage-count + 1
 
@@ -3026,7 +3144,7 @@ CHOOSER
 349
 service-placement-algorithm
 service-placement-algorithm
-"random" "first-fit" "balanced-fit" "max-utilization" "min-power" "AI"
+"random" "first-fit" "balanced-fit" "max-utilization" "min-power" "AI" "AI-phase1" "AI-phase2" "AI-phase3"
 5
 
 CHOOSER

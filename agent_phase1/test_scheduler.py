@@ -60,7 +60,7 @@ def main():
     print(f"Summary: {last_decision_summary()}")
     assert sid == -1, "Malformed input must route to fallback"
 
-    print("\n✓ Smoke tests passed.")
+    print("\nSmoke tests passed.")
 
 
 if __name__ == "__main__":
