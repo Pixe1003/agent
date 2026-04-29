@@ -1,8 +1,7 @@
-# Demo Script
+# Demo 脚本
 
-1. Open the NetLogo model and show the legacy AI scheduler code path.
-2. Switch to the Phase 1 agent initialization and run a short simulation.
-3. Show `last_decision_summary()` updating with select/reject/fallback output.
-4. Run the benchmark runner and open the generated metrics CSV.
-5. Generate the SFT JSONL file from trace rows and show one sample.
-
+1. 打开 NetLogo 模型，展示旧版 AI 调度器的代码路径。
+2. 切换到 Phase 1 agent 初始化逻辑，并运行一段短仿真。
+3. 展示 `last_decision_summary()` 如何更新 select/reject/fallback 输出。
+4. 运行 benchmark runner，并打开生成的 metrics CSV。
+5. 从 trace 行生成 SFT JSONL 文件，并展示其中一条样本。

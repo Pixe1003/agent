@@ -1,4 +1,4 @@
-# 毕设拓展项目：Multi-Agent 云调度系统 — 规划移交文档
+# 毕设拓展项目：多智能体云调度系统 — 规划移交文档
 
 > **文档用途**：这是一份自包含的项目移交文档。读完这份文档，你（Claude）应该
 > 能在不访问历史对话的情况下，接手继续完成 Phase 2–5 的工作。
@@ -89,7 +89,7 @@ ifelse (length serverID) = 1 [ ... ]
 | Phase | 主题 | 关键交付 | 状态 | 预估时间 |
 |-------|------|---------|------|---------|
 | 1 | Tool Calling + 结构化输出 | Pydantic schema、bind_tools、替换 find-AI-server | **草稿已完成** | 1-2 周 |
-| 2 | LangGraph Multi-Agent | Planner/Scheduler/Critic 三 agent + StateGraph | 待做 | 1-2 周 |
+| 2 | LangGraph 多智能体 | 规划器/调度器/审查器三类 agent + StateGraph | 待做 | 1-2 周 |
 | 3 | Memory + RAG | FAISS + BGE embedding + episodic memory | 待做 | 1 周 |
 | 4 | Eval Harness + 多模型横评 | 50 场景 × 5 算法 × N 模型对比 | 待做 | 2 周 |
 | 5 | SFT 数据飞轮 | 轨迹筛选 + 格式化 + LoRA 微调 | 待做 | 1-2 周 |

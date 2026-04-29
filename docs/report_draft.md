@@ -1,26 +1,17 @@
-# Multi-Agent Cloud Scheduling Report Draft
+# 多智能体云调度系统报告草稿
 
-## Background
+## 背景
 
-The project extends a NetLogo data-center scheduler into an agentic scheduling
-system with tool calling, Planner-Scheduler-Critic coordination, memory, traces,
-evaluation, and an SFT data loop.
+本项目把 NetLogo 数据中心调度仿真扩展为一个 Agent 调度系统，包含 tool calling、规划器-调度器-审查器协作、memory、trace、评测以及 SFT 数据闭环。
 
-## Method
+## 方法
 
-The implementation keeps deterministic baselines and LLM-agent phases side by
-side. Phase 1 introduces structured tool calling. Phase 2 adds a
-Planner-Scheduler-Critic pipeline. Phase 3 adds working and episodic memory.
+实现上保留确定性基线算法，并让多个 LLM-agent phase 与基线并存。Phase 1 引入结构化 tool calling。Phase 2 增加规划器-调度器-审查器流水线。Phase 3 增加 working memory 和 episodic memory。
 
-## Experiment Plan
+## 实验计划
 
-Compare First-Fit, Balanced-Fit, Legacy AI, AI-phase1, AI-phase2, and AI-phase3
-on SLA violation rate, energy proxy, rejection rate, fallback rate, and average
-decision latency.
+对比 First-Fit、Balanced-Fit、Legacy AI、AI-phase1、AI-phase2 和 AI-phase3，并观察 SLA 违反率、能耗代理指标、拒绝率、fallback 率和平均决策延迟。
 
-## Current Limitations
+## 当前限制
 
-The first Phase 2/3 implementation is a deterministic skeleton. It is designed
-to make the data flow testable before replacing the scheduler step with a live
-LangGraph/ReAct LLM backend.
-
+Phase 2/3 第一版实现仍是确定性骨架。这样设计是为了先让数据流可测试，再把 scheduler 步骤替换成真实的 LangGraph/ReAct LLM 后端。
