@@ -318,10 +318,10 @@ to setup
     "import sys, os"
     "sys.path.insert(0, os.getcwd())"
     "from agent_phase1 import init_agent, schedule_service, last_decision_summary"
-    "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2"
+    "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2, hybrid_stats_summary as hybrid_stats_summary_phase2"
     "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3"
     "init_agent(model_name='qwen3:8b', temperature=0.1)"
-    "init_agent_phase2(model_name='heuristic')"
+    "init_agent_phase2(model_name='qwen3:8b', backend='auto')"
     "init_agent_phase3(model_name='heuristic')"
   )
 
@@ -1194,7 +1194,9 @@ to-report find-AI-server [ the-server-set the-service ]
   ;; 总调用次数 +1
   set total-usage-count total-usage-count + 1
 
-  let svrIDs [who] of servers
+  if not any? the-server-set [ report nobody ]
+
+  let svrIDs [who] of the-server-set
   let servers-data []
   let n min list 10 length svrIDs
 
@@ -1248,7 +1250,9 @@ to-report find-AI-python-server [ the-server-set the-service python-scheduler-na
   ;; 总调用次数 +1
   set total-usage-count total-usage-count + 1
 
-  let svrIDs [who] of servers
+  if not any? the-server-set [ report nobody ]
+
+  let svrIDs [who] of the-server-set
   let servers-data []
   let n min list 10 length svrIDs
 
@@ -1271,7 +1275,27 @@ to-report find-AI-python-server [ the-server-set the-service python-scheduler-na
 
   py:set "servers_raw" servers-data
   py:set "service_raw" service-data
-  let sid py:runresult (word python-scheduler-name "(servers_raw, service_raw)")
+  let global-state (list
+    (list "active_cpu_util" sys-current-active-svr-ops-util)
+    (list "active_mem_util" sys-current-active-svr-mem-util)
+    (list "active_net_util" sys-current-active-svr-net-util)
+    (list "active_servers" sys-current-active-servers)
+    (list "current_auto_migrations" sys-current-migration-event-due-to-auto-migration)
+    (list "current_consolidation_migrations" sys-current-migration-event-due-to-consolidation)
+    (list "rescheduled_services" sys-service-reschedule-counter)
+    (list "ops_sla_violations" sys-current-service-ops-sla-vio)
+    (list "mem_sla_violations" sys-current-service-mem-sla-vio)
+    (list "net_sla_violations" sys-current-service-net-sla-vio)
+  )
+  py:set "global_state_raw" global-state
+  let sid -1
+  ifelse python-scheduler-name = "schedule_service_phase2"
+  [
+    set sid py:runresult "schedule_service_phase2(servers_raw, service_raw, global_state_raw)"
+  ]
+  [
+    set sid py:runresult (word python-scheduler-name "(servers_raw, service_raw)")
+  ]
 
   (ifelse
     sid >= 0 [
@@ -1792,9 +1816,13 @@ to consolidate-underutilized-servers
               ifelse (count the-server-set) > 0
               [ ;; Reserve resources on the server.
                 let candidate find-server the-server-set self
-                ;; Add it to the migr-list
-                set migr-list lput (list who ([who] of candidate)) migr-list
-                set service-count service-count - 1
+                ifelse candidate != nobody
+                [
+                  ;; Add it to the migr-list
+                  set migr-list lput (list who ([who] of candidate)) migr-list
+                  set service-count service-count - 1
+                ]
+                [ set keep-searching? false ]
               ]
               [ set keep-searching? false ]
             ]
@@ -2679,6 +2707,10 @@ to print-summary
   print (word "| Total Network Bandwidth Installed (GBps)            : " (precision ((sum [net-phy] of servers) / 1024) 4))
   print "|-- Systems ------------------------------------------------------------------"
   print (word "| Accumulated Power Consumption (Unit<kWh>)           : " (precision (sys-power-consumption-total) 4))
+  if service-placement-algorithm = "AI-phase2"
+  [
+    print (word "| Phase 2 Hybrid Agent Usage                          : " (py:runresult "hybrid_stats_summary_phase2()"))
+  ]
   print "==Summary of Results =========================================================="
 
 end

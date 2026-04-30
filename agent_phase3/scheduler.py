@@ -38,7 +38,7 @@ def init_agent(
     )
 
 
-def schedule_service(servers_raw: list, service_req_raw: list) -> int:
+def schedule_service(servers_raw: list, service_req_raw: list, global_state_raw: Any | None = None) -> int:
     global _LAST_DECISION, _TICK
     _TICK += 1
     summary, features = summarize_context(servers_raw, service_req_raw)
@@ -50,12 +50,13 @@ def schedule_service(servers_raw: list, service_req_raw: list) -> int:
                 "episode_id": episode.episode_id,
                 "action_server_id": episode.action_server_id,
                 "reasoning_trace": episode.reasoning_trace,
+                "reward": episode.reward,
             }
             for episode in retrieved
         ],
     }
 
-    sid = agent_phase2.schedule_service(servers_raw, service_req_raw)
+    sid = agent_phase2.schedule_service(servers_raw, service_req_raw, global_state_raw, memory_context)
     decision = agent_phase2.last_decision_dict()
     decision["phase"] = "phase3"
     decision["memory_context"] = memory_context
@@ -101,4 +102,3 @@ def last_decision_summary() -> str:
 
 def last_decision_dict() -> dict[str, Any]:
     return dict(_LAST_DECISION)
-

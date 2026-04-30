@@ -1,25 +1,30 @@
-# 多智能体云调度系统
+# 多智能体云调度系统 / Multi-Agent Cloud Scheduler
 
-本项目把 NetLogo 数据中心调度仿真扩展为一个分阶段演进的 LLM Agent 调度系统。
+本项目把 NetLogo 数据中心调度仿真扩展为一个分阶段演进的 LLM Agent 调度系统。核心设计不是让 LLM 替代每一次高频 placement，而是把 Agent 放在控制层：常规请求由毫秒级 fast path 处理，复杂场景、策略解释、Critic 校验、历史案例检索和离线 trace 再交给 Agent 模块参与。
 
-## 当前里程碑
+## 项目概览 / Overview
 
-- Phase 1：`agent_phase1` 保持 NetLogo API 稳定，并通过 Pydantic tool schema 调用本地 Ollama 模型。如果模型没有返回 tool call，会启用确定性安全兜底逻辑进行选择或拒绝，并记录 `tool_call_succeeded=False`。
-- Phase 2：`agent_phase2` 增加可测试的 Planner-Scheduler-Critic 骨架，并记录 trace。
-- Phase 3：`agent_phase3` 增加 working memory 和基于历史调度决策的 episodic retrieval。
-- Benchmark/SFT：`benchmark.runner` 输出指标 CSV，`dataset.build_sft_dataset` 将 trace 行转换成 OpenAI 风格的 tool-call SFT 样本。
+- **NetLogo model**：`cloud_scheduler_agent.nlogo`，保留原有仿真、可视化和调度算法，并新增 `AI-phase1`、`AI-phase2`、`AI-phase3` 路径。
+- **Phase 1**：`agent_phase1` 保持 NetLogo API 稳定，通过 Pydantic schema 和 Ollama tool calling 进行结构化调度；非法或缺失 tool call 会进入确定性 fallback。
+- **Phase 2**：`agent_phase2` 增加 Planner-Scheduler-Critic control plane。默认 `backend="auto"` 使用 hybrid fast path，只记录复杂度和 Agent escalation 信号；`backend="structured"` 或 `hybrid_agent_mode="sync"` 才同步调用本地 LLM。
+- **Phase 3**：`agent_phase3` 增加 working memory 与 episodic retrieval，把相似历史调度案例作为 `memory_context_raw` 传给 Phase 2。
+- **Benchmark/SFT**：`benchmark.runner` 输出指标 CSV；`dataset.build_sft_dataset` 将 trace 转换为 OpenAI 风格 tool-call SFT 样本。
 
-## 环境配置
+## 环境配置 / Setup
 
 ```powershell
 py -3.13 -m venv .venv
 .\.venv\Scripts\python -m pip install -r agent_phase1\requirements.txt
-ollama list
+ollama pull qwen3:8b
 ```
 
-本地应能看到 `qwen3:8b`。当前机器已确认模型存在，但 tool calling 仍不完全稳定。
+如需运行 NetLogo headless，请设置 `NETLOGO_HOME` 指向本机 NetLogo 安装目录：
 
-## 验证命令
+```powershell
+$env:NETLOGO_HOME = "<path-to-netlogo>"
+```
+
+## 验证命令 / Verification
 
 ```powershell
 py -3.13 -m pytest tests -q
@@ -28,23 +33,24 @@ py -3.13 -m benchmark.runner
 py -3.13 -m dataset.build_sft_dataset
 ```
 
-## NetLogo 集成
+## NetLogo 集成 / NetLogo Integration
 
-模型文件现在会在 `setup` 阶段导入 `agent_phase1`，并在 `find-AI-server` 内调用 `schedule_service(servers_raw, service_raw)`。旧的自由文本 LLaMA 实现保留为 `find-AI-server-legacy`，用于后续 benchmark 对照。
+模型文件在 `setup` 阶段导入 `agent_phase1`、`agent_phase2` 和 `agent_phase3`，并通过 NetLogo Python extension 调用对应的 `schedule_service(...)` 入口。Phase 2 会接收 `global_state_raw`，用于全局风险感知；Phase 3 会检索历史案例并把 memory context 传入 Phase 2。
 
-当前本机 NetLogo 安装目录是 `D:\NETLOGO`。在项目根目录运行下面的 100 tick headless 冒烟测试：
+100 tick headless 冒烟测试示例：
 
 ```powershell
-& 'D:\NETLOGO\netlogo-headless.bat' `
-  --model 'D:\Users\12057\Desktop\agent\2143512_Jiale Miao_2025_Supplementary.nlogo' `
-  --setup-file 'D:\Users\12057\Desktop\agent\benchmark\netlogo_100tick_smoke.xml' `
-  --experiment 'agent-100tick' `
+& "$env:NETLOGO_HOME\netlogo-headless.bat" `
+  --model ".\cloud_scheduler_agent.nlogo" `
+  --setup-file ".\benchmark\netlogo_100tick_smoke.xml" `
+  --experiment "agent-100tick" `
   --table -
 ```
 
 模型使用 `py:setup ".\\.venv\\Scripts\\python.exe"`，因此启动 NetLogo 前需要先创建并安装本地虚拟环境。
 
-## 已知限制
+## 已知限制 / Known Limitations
 
-- 已使用 `D:\NETLOGO` 跑通 100 tick 的 `AI-phase2` headless 冒烟实验。
-- Phase 2/3 当前使用确定性调度逻辑。这是有意设计：先让 graph、memory、trace、benchmark 和 SFT 数据流都可测试，再把 scheduler 内部替换为真实的 LangGraph/ReAct LLM 调用。
+- 本地 8B LLM 同步调度延迟较高，因此 NetLogo 实跑默认使用 hybrid fast path。
+- `backend="structured"` 保留为短 demo、复杂 case 分析和离线 trace 路径，不适合每 tick 高频仿真。
+- Phase 3 的 RAG 定位是 retrieval-augmented scheduling memory / case-based reasoning，不是通用文档问答。

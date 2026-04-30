@@ -1,158 +1,109 @@
-# NetLogo 侧改动清单
+# NetLogo 集成指南 / NetLogo Integration Guide
 
-Phase 1 需要改三处 NetLogo 代码。所有 Python 逻辑都已经下沉到 `agent_phase1/`
-这个包，NetLogo 只负责传数据、收 int。
+本文说明 `cloud_scheduler_agent.nlogo` 如何调用 Python Agent 包。当前模型已经集成 Phase 1、Phase 2 和 Phase 3；后续修改时应保持这些入口函数和哨兵值语义稳定。
 
----
+## 目录结构 / Expected Layout
 
-## 改动 1：`setup` 里替换 LLM 初始化
-
-找到你原 setup 里这一段：
-
-```netlogo
-(py:run
-  "from langchain_core.prompts import ChatPromptTemplate"
-  "from langchain_ollama.llms import OllamaLLM"
-  "template = \"Question: {question} Answer: value only.\""
-  "prompt = ChatPromptTemplate.from_template(template)"
-  "model = OllamaLLM(model=\"llama3.2:latest\")"
-  "chain = prompt | model"
-)
+```text
+project-root/
+├── cloud_scheduler_agent.nlogo
+├── agent_phase1/
+├── agent_phase2/
+├── agent_phase3/
+├── benchmark/
+└── tests/
 ```
 
-**全部删掉**，替换为：
+NetLogo 通过 `sys.path.insert(0, os.getcwd())` 导入本仓库中的 Python 包，因此建议从项目根目录打开模型或运行 headless 命令。
+
+## Setup 初始化 / Setup Imports
+
+`setup` 阶段应初始化三个阶段的调度入口：
 
 ```netlogo
-;; Phase 1: 初始化 tool-calling agent (Qwen3:8b + Pydantic)
 (py:run
   "import sys, os"
-  "sys.path.insert(0, os.getcwd())"   ;; 让 Python 能找到 agent_phase1 包
+  "sys.path.insert(0, os.getcwd())"
   "from agent_phase1 import init_agent, schedule_service, last_decision_summary"
+  "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2, hybrid_stats_summary as hybrid_stats_summary_phase2"
+  "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3"
   "init_agent(model_name='qwen3:8b', temperature=0.1)"
+  "init_agent_phase2(model_name='qwen3:8b', backend='auto')"
+  "init_agent_phase3(model_name='heuristic')"
 )
 ```
 
-> 注意：`os.getcwd()` 默认是 NetLogo 启动目录。如果你的 `.nlogo` 文件和
-> `agent_phase1/` 文件夹不在同一级，就把 `os.getcwd()` 替换成 agent_phase1
-> 父目录的绝对路径，例如 `"/Users/you/project"`。
+`backend="auto"` 是 Phase 2 的默认线上路径：常规请求走 fast path，复杂请求记录 Agent escalation 信号，但不会每次同步调用本地 LLM。
 
----
+## 候选服务器数据 / Candidate Data
 
-## 改动 2：重写 `find-AI-server`
-
-你原来的这个 reporter（约 1173–1226 行）替换为下面这版。核心变化：
-
-1. 不再手动循环拼字符串，用 `py:set` 把结构化数据直接传过去。
-2. 把资源从"剩余绝对值"换成"剩余百分比"——LLM 看百分比比看绝对数字准得多。
-3. 根据 Python 返回的哨兵值分三种情况处理：选中、拒绝、fallback。
+`find-AI-server` 和 `find-AI-python-server` 必须使用当前 NetLogo 已过滤好的 `the-server-set`，不能使用全局 `servers` 集合：
 
 ```netlogo
-to-report find-AI-server [ the-server-set the-service ]
-  ;; 总调用次数 +1
-  set total-usage-count total-usage-count + 1
-
-  ;; ---- 1. 把前 10 台服务器的状态打包成 [id cpu% ram% net%] 列表 ----
-  let svrIDs [who] of servers
-  let servers-data []
-  let n min list 10 length svrIDs
-
-  let i 0
-  while [ i < n ] [
-    let svr server (item i svrIDs)
-    let sid [who] of svr
-    ;; 百分比空闲 = (1 - 使用率) * 100
-    let cpu-free-pct (1 - ([ops-now] of svr / [ops-phy] of svr)) * 100
-    let ram-free-pct (1 - ([mem-now] of svr / [mem-phy] of svr)) * 100
-    let net-free-pct (1 - ([net-now] of svr / [net-phy] of svr)) * 100
-    set servers-data lput (list sid cpu-free-pct ram-free-pct net-free-pct) servers-data
-    set i i + 1
-  ]
-
-  ;; ---- 2. 把服务请求转成百分比形式 ----
-  ;; 假设所有服务器容量相同，拿第一台做基准（你原代码的假设）
-  let ref-svr server (item 0 svrIDs)
-  let cpu-req-pct ([ops-cnf] of the-service / [ops-phy] of ref-svr) * 100
-  let ram-req-pct ([mem-cnf] of the-service / [mem-phy] of ref-svr) * 100
-  let net-req-pct ([net-cnf] of the-service / [net-phy] of ref-svr) * 100
-
-  let service-data (list cpu-req-pct ram-req-pct net-req-pct)
-
-  ;; ---- 3. 把数据喂给 Python，取回 server_id ----
-  py:set "servers_raw" servers-data
-  py:set "service_raw" service-data
-  let sid py:runresult "schedule_service(servers_raw, service_raw)"
-
-  ;; ---- 4. 根据返回值分派 ----
-  ;; sid >= 0 : agent 正常选择
-  ;; sid = -1 : fallback 到 balanced-fit
-  ;; sid = -2 : agent 拒绝该服务
-  (ifelse
-    sid >= 0 [
-      set ai-usage-count ai-usage-count + 1
-      ;; 可选：把决策摘要打到日志
-      ;; show py:runresult "last_decision_summary()"
-      report server sid
-    ]
-    sid = -2 [
-      ;; agent 明确拒绝 —— 走 NetLogo 原本的拒绝流程（由 find-server 外层处理）
-      report nobody
-    ]
-    ;; else: sid = -1，走 fallback
-    [
-      report find-balanced-fit-server the-server-set the-service
-    ]
-  )
-end
+if not any? the-server-set [ report nobody ]
+let svrIDs [who] of the-server-set
 ```
 
----
+传给 Python 的服务器格式为：
 
-## 改动 3（可选）：监视器显示最近一次决策
+```text
+[server_id cpu_free_pct mem_free_pct net_free_pct]
+```
 
-在你 NetLogo 界面上新建一个 Monitor，Reporter 填：
+服务请求格式为：
+
+```text
+[cpu_req_pct mem_req_pct net_req_pct]
+```
+
+## 返回值语义 / Return Semantics
+
+Python 入口统一返回整数：
+
+| 返回值 | NetLogo 行为 |
+|---|---|
+| `>= 0` | `report server sid` |
+| `-1` | `report find-balanced-fit-server the-server-set the-service` |
+| `-2` | `report nobody` |
+
+这让 Python Agent 可以失败得很明确，同时保留 NetLogo 侧已有的 baseline fallback。
+
+## Phase 2 全局风险 / Phase 2 Global Risk
+
+Phase 2 会额外接收 `global_state_raw`：
 
 ```netlogo
-py:runresult "last_decision_summary()"
+py:set "global_state_raw" global-state
+set sid py:runresult "schedule_service_phase2(servers_raw, service_raw, global_state_raw)"
 ```
 
-就能实时看到 `[select] server=5 ok=True 320ms | server 5 has ample ...` 这样的摘要，
-调试和演示时非常直观。
+当前 global state 包含 active CPU/MEM/NET utilization、active server count、auto/consolidation migration、rescheduled services 和当前 SLA violation 信号。Python 侧会计算 `global_risk_score`、`global_risk_level`、`global_risk_tags` 和 `risk_policy`，并把结果写入 trace 与 `hybrid_stats()`。
 
----
+NetLogo Monitor 可使用：
 
-## 文件结构
-
-最终应该长这样：
-
-```
-your-project/
-├── 2143512_Jiale_Miao_2025_Supplementary.nlogo   (按上面改 3 处)
-└── agent_phase1/
-    ├── __init__.py
-    ├── schemas.py
-    ├── prompts.py
-    ├── scheduler.py
-    ├── test_scheduler.py
-    ├── requirements.txt
-    └── README.md
+```netlogo
+py:runresult "hybrid_stats_summary_phase2()"
 ```
 
----
+## Phase 3 Memory / Phase 3 记忆路径
 
-## 启动顺序
+`find-AI-phase3-server` 通过 `schedule_service_phase3(servers_raw, service_raw)` 调用 Phase 3。Phase 3 会检索历史 episode，构造 `memory_context_raw`，再委托 Phase 2 完成 fast path、复杂度分析或 structured Agent 调度。
 
-1. 终端 1：`ollama serve`
-2. 终端 2：`ollama pull qwen3:8b`（第一次用需要拉模型）
-3. 终端 3：`python -m agent_phase1.test_scheduler` —— 先确认 Python 侧跑得通
-4. 打开 NetLogo，Interface 选 `service-placement-algorithm = "AI"`，点 setup → go
+## Headless Smoke / Headless 冒烟测试
 
----
+```powershell
+& "$env:NETLOGO_HOME\netlogo-headless.bat" `
+  --model ".\cloud_scheduler_agent.nlogo" `
+  --setup-file ".\benchmark\netlogo_100tick_smoke.xml" `
+  --experiment "agent-100tick" `
+  --table -
+```
 
-## 可能踩的坑
+## 常见问题 / Troubleshooting
 
-| 现象 | 原因 | 处理 |
+| 现象 | 可能原因 | 处理 |
 |---|---|---|
-| `ModuleNotFoundError: agent_phase1` | NetLogo 工作目录不对 | 改动 1 里 `os.getcwd()` 换成绝对路径 |
-| 调用很慢（>5s） | Qwen3 默认开了 thinking | 已用 `/no_think` 关了；若仍慢，检查 Ollama 日志 |
-| 每次都走 fallback | Qwen3:8b 没返回 tool call | 跑 `test_scheduler.py` 看 `raw_llm_response`，多半是模型输出自由文本 |
-| Tool call 参数类型错 | 模型把 int 写成 str | Pydantic 会自动 coerce，若仍失败看 `last_decision_summary()` |
+| `ModuleNotFoundError: agent_phase1` | NetLogo 工作目录不是项目根目录 | 从项目根目录启动，或把项目根加入 `sys.path` |
+| 每次都走 fallback | 模型没有返回有效 tool call | 先运行 `python -m agent_phase1.test_scheduler` |
+| Phase 2 速度很快但没有 LLM 调用 | `backend="auto"` 默认 record 模式 | 这是实跑默认行为；demo 时显式使用 `backend="structured"` 或 `hybrid_agent_mode="sync"` |
+| `OF ... NOBODY` | NetLogo 路径未检查 `candidate != nobody` | 在 consolidation/migration 逻辑中保留 nobody 防护 |

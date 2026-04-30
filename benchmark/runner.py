@@ -36,15 +36,27 @@ def run_benchmark(
 
 
 def _run_algorithm(seed: int, distribution: str, algorithm: str, scenario: list[tuple[ServerRows, ServiceRow]]) -> dict[str, float | int | str]:
-    selector = _algorithm(algorithm)
+    selector = _algorithm(algorithm, seed=seed, distribution=distribution)
     rejects = 0
     fallbacks = 0
     selected = 0
+    agent_escalations = 0
+    agent_sync_calls = 0
+    memory_used_count = 0
+    retrieved_episode_count = 0
     latencies: list[float] = []
     for servers, service in scenario:
         t0 = time.perf_counter()
         sid = selector(servers, service)
         latencies.append((time.perf_counter() - t0) * 1000)
+        decision = _last_decision(algorithm)
+        if decision.get("agent_escalation_needed") is True:
+            agent_escalations += 1
+        if decision.get("backend") == "hybrid" and decision.get("fast_path_used") is False:
+            agent_sync_calls += 1
+        if decision.get("memory_used") is True:
+            memory_used_count += 1
+        retrieved_episode_count += int(decision.get("retrieved_episode_count") or 0)
         if sid == -1:
             fallbacks += 1
         elif sid == -2:
@@ -66,10 +78,17 @@ def _run_algorithm(seed: int, distribution: str, algorithm: str, scenario: list[
         "sla_violation_rate": 0.0,
         "total_energy": round(selected * 1.0 + rejects * 0.1 + fallbacks * 0.5, 3),
         "avg_latency_ms": round(sum(latencies) / len(latencies), 3),
+        "agent_escalations": agent_escalations,
+        "agent_escalation_rate": agent_escalations / total,
+        "agent_sync_calls": agent_sync_calls,
+        "memory_used_count": memory_used_count,
+        "memory_usage_rate": memory_used_count / total,
+        "retrieved_episode_count": retrieved_episode_count,
+        "avg_retrieved_episode_count": retrieved_episode_count / total,
     }
 
 
-def _algorithm(name: str) -> Callable[[ServerRows, ServiceRow], int]:
+def _algorithm(name: str, *, seed: int, distribution: str) -> Callable[[ServerRows, ServiceRow], int]:
     if name == "first-fit":
         return _first_fit
     if name == "balanced-fit":
@@ -79,7 +98,25 @@ def _algorithm(name: str) -> Callable[[ServerRows, ServiceRow], int]:
 
         init_agent(model_name="heuristic", enable_tracing=False)
         return schedule_service
+    if name == "AI-phase3":
+        from agent_phase3 import init_agent, schedule_service
+
+        memory_path = Path("traces") / f"benchmark-{seed}-{distribution}-{time.time_ns()}.episodes.jsonl"
+        init_agent(model_name="heuristic", backend="hybrid", enable_tracing=False, memory_path=memory_path)
+        return schedule_service
     raise ValueError(f"Unknown algorithm: {name}")
+
+
+def _last_decision(algorithm: str) -> dict:
+    if algorithm == "AI-phase2":
+        from agent_phase2 import last_decision_dict
+
+        return last_decision_dict()
+    if algorithm == "AI-phase3":
+        from agent_phase3 import last_decision_dict
+
+        return last_decision_dict()
+    return {}
 
 
 def _first_fit(servers: ServerRows, service: ServiceRow) -> int:
@@ -129,6 +166,5 @@ if __name__ == "__main__":
     run_benchmark(
         seeds=[1, 2, 3, 4, 5],
         distributions=["mixed", "cpu-heavy", "memory-heavy"],
-        algorithms=["first-fit", "balanced-fit", "AI-phase2"],
+        algorithms=["first-fit", "balanced-fit", "AI-phase2", "AI-phase3"],
     )
-
