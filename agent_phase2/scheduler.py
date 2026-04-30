@@ -1074,21 +1074,13 @@ def _candidate_score(
     server: ServerSnapshot,
     risk_policy: dict[str, Any] | None = None,
 ) -> tuple[float, ...]:
-    residual = [
-        server.cpu_free_pct - ctx.service.cpu_pct,
-        server.ram_free_pct - ctx.service.ram_pct,
-        server.net_free_pct - ctx.service.net_pct,
+    post_utilization = [
+        100.0 - server.cpu_free_pct + ctx.service.cpu_pct,
+        100.0 - server.ram_free_pct + ctx.service.ram_pct,
+        100.0 - server.net_free_pct + ctx.service.net_pct,
     ]
-    spread = statistics.pstdev(residual)
-    if risk_policy and risk_policy.get("avoid_tight_headroom"):
-        weights = risk_policy.get("resource_weights") or {}
-        weighted_headroom = (
-            residual[0] * float(weights.get("cpu", 1.0))
-            + residual[1] * float(weights.get("mem", 1.0))
-            + residual[2] * float(weights.get("net", 1.0))
-        )
-        return (-weighted_headroom, spread, sum(residual), server.server_id)
-    return (spread, sum(residual), server.server_id)
+    resource_distance = max(post_utilization) - min(post_utilization)
+    return (resource_distance, server.server_id)
 
 
 def _cluster_fragmentation(ctx: SchedulingContext) -> float:

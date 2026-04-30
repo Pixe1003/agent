@@ -319,7 +319,7 @@ to setup
     "sys.path.insert(0, os.getcwd())"
     "from agent_phase1 import init_agent, schedule_service, last_decision_summary"
     "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2, hybrid_stats_summary as hybrid_stats_summary_phase2"
-    "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3"
+    "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3, agent_usage_summary as agent_usage_summary_phase3"
     "init_agent(model_name='qwen3:8b', temperature=0.1)"
     "init_agent_phase2(model_name='qwen3:8b', backend='auto')"
     "init_agent_phase3(model_name='heuristic')"
@@ -1169,14 +1169,14 @@ to-report find-candidate [ the-server-set the-service ]
     service-placement-algorithm = "AI-phase2"
     [
       ifelse ticks < 10
-      [ set candidate find-first-fit-server the-server-set the-service ]
+      [ set candidate find-balanced-fit-server the-server-set the-service ]
       [ set candidate find-AI-phase2-server the-server-set the-service ]
 
     ]
     service-placement-algorithm = "AI-phase3"
     [
       ifelse ticks < 10
-      [ set candidate find-first-fit-server the-server-set the-service ]
+      [ set candidate find-balanced-fit-server the-server-set the-service ]
       [ set candidate find-AI-phase3-server the-server-set the-service ]
 
     ]
@@ -2710,6 +2710,11 @@ to print-summary
   if service-placement-algorithm = "AI-phase2"
   [
     print (word "| Phase 2 Hybrid Agent Usage                          : " (py:runresult "hybrid_stats_summary_phase2()"))
+  ]
+  if service-placement-algorithm = "AI-phase3"
+  [
+    print (word "| Phase 3 Agent Usage                                 : " (py:runresult "agent_usage_summary_phase3()"))
+    print (word "| Phase 3 Last Memory Decision                        : " (py:runresult "last_decision_summary_phase3()"))
   ]
   print "==Summary of Results =========================================================="
 

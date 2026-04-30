@@ -84,6 +84,22 @@ def test_phase2_selects_valid_balanced_candidate():
     assert "approved" in last_decision_summary().lower()
 
 
+def test_phase2_fast_path_matches_netlogo_balanced_fit_distance():
+    init_agent(model_name="heuristic", backend="heuristic", enable_tracing=False)
+    sid = schedule_service(
+        [
+            [0, 15.0, 15.0, 55.0],
+            [1, 15.0, 35.0, 60.0],
+        ],
+        [10.0, 10.0, 10.0],
+    )
+
+    decision = last_decision_dict()
+    assert sid == 0
+    assert decision["action"] == "select"
+    assert decision["server_id"] == 0
+
+
 def test_auto_backend_uses_fast_hybrid_even_with_llm_model_name():
     init_agent(
         model_name="qwen3:8b",
@@ -261,7 +277,7 @@ def test_hybrid_global_risk_records_escalation_without_sync_agent():
     assert stats["global_risk_agent_triggers"] == 1
 
 
-def test_hybrid_network_risk_fast_path_prefers_net_headroom():
+def test_hybrid_network_risk_fast_path_keeps_balanced_fit_primary():
     init_agent(
         model_name="qwen3:8b",
         backend="hybrid",
@@ -283,7 +299,7 @@ def test_hybrid_network_risk_fast_path_prefers_net_headroom():
     )
 
     decision = last_decision_dict()
-    assert sid == 1
+    assert sid == 0
     assert decision["risk_aware_fast_path"] is True
     assert decision["risk_policy"]["resource_weights"]["net"] > decision["risk_policy"]["resource_weights"]["cpu"]
     assert "network-pressure" in decision["global_risk_tags"]

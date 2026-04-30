@@ -100,5 +100,29 @@ def last_decision_summary() -> str:
     )
 
 
+def agent_usage_stats() -> dict[str, Any]:
+    return agent_phase2.hybrid_stats()
+
+
+def agent_usage_summary() -> str:
+    stats = agent_usage_stats()
+    total = stats.get("total_decisions", 0)
+    if total == 0:
+        return "phase3 total=0"
+    return (
+        f"phase3 total={total} "
+        f"fast={stats.get('fast_path_decisions', 0)} "
+        f"escalate={stats.get('agent_escalation_needed', 0)} "
+        f"({stats.get('escalation_ratio', 0.0) * 100:.1f}%) "
+        f"agent_sync={stats.get('agent_sync_calls', 0)} "
+        f"({stats.get('hybrid_agent_call_ratio', 0.0) * 100:.1f}%) "
+        f"memory={stats.get('memory_used_decisions', 0)} "
+        f"({stats.get('memory_usage_ratio', 0.0) * 100:.1f}%) "
+        f"avg_retrieved={stats.get('avg_retrieved_episode_count', 0.0):.2f} "
+        f"avg_latency={stats.get('avg_latency_ms', 0.0):.3f}ms "
+        f"fallback={stats.get('fallback_decisions', 0)}"
+    )
+
+
 def last_decision_dict() -> dict[str, Any]:
     return dict(_LAST_DECISION)

@@ -1,6 +1,6 @@
 from agent_phase1.schemas import SchedulingDecision
 from agent_phase3.memory import Episode, EpisodicMemory, WorkingMemory, summarize_context
-from agent_phase3 import init_agent, last_decision_dict, schedule_service
+from agent_phase3 import agent_usage_stats, agent_usage_summary, init_agent, last_decision_dict, schedule_service
 
 
 def test_working_memory_keeps_recent_successful_decisions():
@@ -86,6 +86,40 @@ def test_phase3_passes_retrieved_episodes_into_phase2_metadata(tmp_path):
     assert decision["memory_used"] is True
     assert decision["retrieved_episode_count"] == 1
     assert decision["memory_context"]["episodic"][0]["episode_id"] == "similar-balanced"
+
+
+def test_phase3_agent_usage_summary_reports_participation_metrics(tmp_path):
+    memory_path = tmp_path / "episodes.jsonl"
+    store = EpisodicMemory(path=memory_path)
+    store.add(
+        Episode(
+            episode_id="similar-balanced",
+            run_id="seed",
+            tick=1,
+            state_summary_text=(
+                "Cluster has 1 active servers. Mean free resources are CPU 90.0%, "
+                "RAM 90.0%, NET 90.0%. Incoming service needs CPU 10.0%, RAM 10.0%, NET 10.0%."
+            ),
+            state_features=[0.9, 0.9, 0.9, 0.1, 0.1, 0.1],
+            service_request={"cpu_pct": 10.0, "ram_pct": 10.0, "net_pct": 10.0},
+            action_server_id=0,
+            reasoning_trace="A matching request selected server 0.",
+            reward=1.0,
+        )
+    )
+
+    init_agent(model_name="heuristic", backend="hybrid", enable_tracing=False, memory_path=memory_path)
+    schedule_service([[0, 90.0, 90.0, 90.0]], [10.0, 10.0, 10.0])
+
+    stats = agent_usage_stats()
+    summary = agent_usage_summary()
+    assert stats["total_decisions"] == 1
+    assert stats["memory_used_decisions"] == 1
+    assert "phase3 total=1" in summary
+    assert "memory=1" in summary
+    assert "avg_retrieved=1.00" in summary
+    assert "agent_sync=0" in summary
+    assert "avg_latency=" in summary
 
 
 def test_summarize_context_uses_natural_language():
