@@ -1,6 +1,8 @@
 langchain>=0.3.7
 langchain-core>=0.3.15
 langchain-ollama>=0.2.0
+langgraph>=1.1
 pydantic>=2.8
 ollama>=0.3.3
 numpy>=1.26
+pytest>=9.0

@@ -58,10 +58,39 @@ def test_phase3_scheduler_records_memory_context():
     assert "memory_context" in last_decision_dict()
 
 
+def test_phase3_passes_retrieved_episodes_into_phase2_metadata(tmp_path):
+    memory_path = tmp_path / "episodes.jsonl"
+    store = EpisodicMemory(path=memory_path)
+    store.add(
+        Episode(
+            episode_id="similar-balanced",
+            run_id="seed",
+            tick=1,
+            state_summary_text=(
+                "Cluster has 1 active servers. Mean free resources are CPU 90.0%, "
+                "RAM 90.0%, NET 90.0%. Incoming service needs CPU 10.0%, RAM 10.0%, NET 10.0%."
+            ),
+            state_features=[0.9, 0.9, 0.9, 0.1, 0.1, 0.1],
+            service_request={"cpu_pct": 10.0, "ram_pct": 10.0, "net_pct": 10.0},
+            action_server_id=0,
+            reasoning_trace="A matching request selected server 0.",
+            reward=1.0,
+        )
+    )
+
+    init_agent(model_name="heuristic", backend="hybrid", enable_tracing=False, memory_path=memory_path)
+    sid = schedule_service([[0, 90.0, 90.0, 90.0]], [10.0, 10.0, 10.0])
+
+    decision = last_decision_dict()
+    assert sid == 0
+    assert decision["memory_used"] is True
+    assert decision["retrieved_episode_count"] == 1
+    assert decision["memory_context"]["episodic"][0]["episode_id"] == "similar-balanced"
+
+
 def test_summarize_context_uses_natural_language():
     summary, features = summarize_context([[0, 80.0, 70.0, 20.0]], [10.0, 20.0, 30.0])
 
     assert "Cluster has" in summary
     assert "Incoming service" in summary
     assert len(features) == 6
-
