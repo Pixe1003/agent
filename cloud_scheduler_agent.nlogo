@@ -127,6 +127,12 @@ globals
   ai-usage-count    ;; 成功使用AI的次数
   total-usage-count ;; 总调用次数
 
+  aiops-risk-level
+  aiops-risk-score
+  aiops-active-alert-count
+  aiops-last-insight-summary
+  aiops-last-stats-summary
+
 ]
 ;;
 ;;============================================================================;;
@@ -306,6 +312,11 @@ to setup
   set sys-current-active-svr-net-util 0
 
   set sys-power-consumption-total 0
+  set aiops-risk-level "not-started"
+  set aiops-risk-score 0
+  set aiops-active-alert-count 0
+  set aiops-last-insight-summary "aiops no insight yet"
+  set aiops-last-stats-summary "aiops observed=0"
 
   initialize-datacenter
 
@@ -318,11 +329,13 @@ to setup
     "import sys, os"
     "sys.path.insert(0, os.getcwd())"
     "from agent_phase1 import init_agent, schedule_service, last_decision_summary"
-    "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2, hybrid_stats_summary as hybrid_stats_summary_phase2"
-    "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3, agent_usage_summary as agent_usage_summary_phase3"
+    "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2, hybrid_stats_summary as hybrid_stats_summary_phase2, hybrid_stats as hybrid_stats_phase2, last_decision_dict as last_decision_dict_phase2"
+    "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3, agent_usage_summary as agent_usage_summary_phase3, agent_usage_stats as agent_usage_stats_phase3, last_decision_dict as last_decision_dict_phase3"
+    "from agent_aiops import init_agent as init_agent_aiops, observe_ops_state as observe_aiops_state, last_insight_summary as last_aiops_insight_summary, aiops_stats_summary"
     "init_agent(model_name='qwen3:8b', temperature=0.1)"
     "init_agent_phase2(model_name='qwen3:8b', backend='auto')"
     "init_agent_phase3(model_name='heuristic')"
+    "init_agent_aiops(model_name='heuristic', backend='rule')"
   )
 
   reset-ticks
@@ -1276,6 +1289,7 @@ to-report find-AI-python-server [ the-server-set the-service python-scheduler-na
   py:set "servers_raw" servers-data
   py:set "service_raw" service-data
   let global-state (list
+    (list "service_placement_algorithm" service-placement-algorithm)
     (list "active_cpu_util" sys-current-active-svr-ops-util)
     (list "active_mem_util" sys-current-active-svr-mem-util)
     (list "active_net_util" sys-current-active-svr-net-util)
@@ -1292,10 +1306,20 @@ to-report find-AI-python-server [ the-server-set the-service python-scheduler-na
   ifelse python-scheduler-name = "schedule_service_phase2"
   [
     set sid py:runresult "schedule_service_phase2(servers_raw, service_raw, global_state_raw)"
+    py:run "scheduler_stats_raw = hybrid_stats_phase2()"
+    py:run "recent_decisions_raw = [last_decision_dict_phase2()]"
   ]
   [
-    set sid py:runresult (word python-scheduler-name "(servers_raw, service_raw)")
+    set sid py:runresult (word python-scheduler-name "(servers_raw, service_raw, global_state_raw)")
+    py:run "scheduler_stats_raw = agent_usage_stats_phase3()"
+    py:run "recent_decisions_raw = [last_decision_dict_phase3()]"
   ]
+  py:run "aiops_insight_raw = observe_aiops_state(global_state_raw, scheduler_stats_raw, recent_decisions_raw, None, servers_raw)"
+  set aiops-risk-level py:runresult "aiops_insight_raw.get('risk_level', 'low')"
+  set aiops-risk-score py:runresult "aiops_insight_raw.get('risk_score', 0.0)"
+  set aiops-active-alert-count py:runresult "len(aiops_insight_raw.get('active_alerts', []))"
+  set aiops-last-insight-summary py:runresult "last_aiops_insight_summary()"
+  set aiops-last-stats-summary py:runresult "aiops_stats_summary()"
 
   (ifelse
     sid >= 0 [
@@ -1367,6 +1391,31 @@ to-report find-AI-server-legacy [ the-server-set the-service ]
   ]
 end
 
+
+
+to-report aiops-monitor-summary
+  report aiops-last-insight-summary
+end
+
+
+to-report aiops-monitor-stats
+  report aiops-last-stats-summary
+end
+
+
+to-report aiops-current-risk-level
+  report aiops-risk-level
+end
+
+
+to-report aiops-current-risk-score
+  report aiops-risk-score
+end
+
+
+to-report aiops-current-alert-count
+  report aiops-active-alert-count
+end
 
 
 ;;
@@ -2716,6 +2765,11 @@ to print-summary
     print (word "| Phase 3 Agent Usage                                 : " (py:runresult "agent_usage_summary_phase3()"))
     print (word "| Phase 3 Last Memory Decision                        : " (py:runresult "last_decision_summary_phase3()"))
   ]
+  if member? service-placement-algorithm (list "AI-phase2" "AI-phase3")
+  [
+    print (word "| AIOps Realtime Monitor                              : " (py:runresult "last_aiops_insight_summary()"))
+    print (word "| AIOps Realtime Stats                                : " (py:runresult "aiops_stats_summary()"))
+  ]
   print "==Summary of Results =========================================================="
 
 end
@@ -3606,6 +3660,24 @@ true
 PENS
 "Rescheduled" 1.0 0 -8630108 true "" "plot sys-service-reschedule-counter"
 "Rejected" 1.0 0 -2674135 true "" "plot sys-service-rejection-counter"
+
+PLOT
+2000
+850
+2347
+990
+AIOps Realtime Risk
+Time
+Risk
+0.0
+10.0
+0.0
+1.0
+true
+true
+"" ""
+PENS
+"Risk Score" 1.0 0 -2674135 true "" "plot aiops-risk-score"
 
 CHOOSER
 196

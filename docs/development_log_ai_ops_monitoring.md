@@ -220,3 +220,23 @@ Agent 负责 AI Ops 监控、风险解释、历史案例检索、实验总结和
 ```
 
 这个方向既保留了原生调度算法的稳定性，也为系统增加了智能化观测、诊断和持续优化能力，是后续开发的重点方向。
+
+## AIOps Agent v1 实现取向
+
+v1 采用 `agent_aiops` 作为 Python-first 的实时监控与策略建议模块。它读取 `global_state`、Phase 2 hybrid stats、recent decisions 和 Phase 3 memory context，输出结构化 insight：风险等级、风险标签、诊断摘要、策略建议、证据和 guardrails。
+
+该模块默认使用规则路径，不调用 LLM，也不返回 `server_id`。所有策略建议都带有 `requires_human_approval=True` 和 `do_not_auto_apply`，用于保持生产式 change management 边界。
+
+实时监测接口为 `observe_ops_state(...)`。NetLogo 在 Phase 2 / Phase 3 每次调度后调用该接口，并把当前 active utilization、migration、reschedule 和 SLA violation 信号传入 AIOps。AIOps 会维护 rolling window、active alerts 和推荐冷却：异常检测可以每次事件运行，策略建议不会每 tick 重复刷屏。
+
+为了让监控过程在分配中可见，NetLogo 侧缓存最新 AIOps 状态到 `aiops-risk-level`、`aiops-risk-score`、`aiops-active-alert-count`、`aiops-last-insight-summary` 和 `aiops-last-stats-summary`。这些字段通过 reporter 暴露给 Monitor，同时 `AIOps Realtime Risk` 图会持续绘制风险分数。
+
+架构上采用“逻辑多角色、单入口”的设计，而不是 v1 就引入真实多 agent 协同：
+
+- Risk Analyzer 负责统一风险打分口径。
+- SLA/Migration Analyzer 识别网络 SLA、迁移和 reschedule 异常。
+- Memory Context 把历史案例作为 evidence，不直接改变动作。
+- Policy Advisor 输出建议，不执行策略。
+- Harness Guard 为每条 insight 添加审批、回滚和冷却约束。
+
+这个选择参考 harness engineering 的核心思想：真正决定 Agent 可靠性的不是更自由的推理链，而是外层运行环境、结构化接口、trace、评估和安全边界。当前项目的主要问题是可观测性和策略闭环，不是并行推理吞吐，因此 v1 先做单入口可测、可回归、可审计的监控 Agent。

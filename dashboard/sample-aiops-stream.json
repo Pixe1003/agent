@@ -1,0 +1,218 @@
+{
+  "algorithm": "AI-phase2",
+  "events": [
+    {
+      "tick": 1,
+      "global_state": {
+        "active_cpu_util": 0.31,
+        "active_mem_util": 0.28,
+        "active_net_util": 0.24,
+        "current_auto_migrations": 0,
+        "net_sla_violations": 0
+      },
+      "aiops": {
+        "risk_level": "low",
+        "risk_score": 0,
+        "risk_tags": [],
+        "active_alerts": [],
+        "root_cause_summary": "No elevated AIOps risk signals detected.",
+        "recommendations": [],
+        "guardrails": ["do_not_auto_apply", "human_approval_required"]
+      },
+      "servers": [
+        { "id": 0, "status": "normal", "cpu": 24, "mem": 26, "net": 18 },
+        { "id": 1, "status": "normal", "cpu": 31, "mem": 22, "net": 24 },
+        { "id": 2, "status": "normal", "cpu": 19, "mem": 34, "net": 20 },
+        { "id": 3, "status": "normal", "cpu": 28, "mem": 28, "net": 21 },
+        { "id": 4, "status": "normal", "cpu": 16, "mem": 20, "net": 14 },
+        { "id": 5, "status": "normal", "cpu": 22, "mem": 18, "net": 17 },
+        { "id": 6, "status": "normal", "cpu": 26, "mem": 30, "net": 25 },
+        { "id": 7, "status": "normal", "cpu": 14, "mem": 16, "net": 12 }
+      ],
+      "events": ["Services assigned through deterministic fast path."]
+    },
+    {
+      "tick": 8,
+      "global_state": {
+        "active_cpu_util": 0.46,
+        "active_mem_util": 0.42,
+        "active_net_util": 0.61,
+        "current_auto_migrations": 1,
+        "net_sla_violations": 0
+      },
+      "aiops": {
+        "risk_level": "low",
+        "risk_score": 0.1,
+        "risk_tags": ["migration-watch"],
+        "active_alerts": [{ "tag": "migration-watch", "occurrence_count": 1 }],
+        "root_cause_summary": "Elevated AIOps signals detected: migration-watch.",
+        "recommendations": [
+          {
+            "action": "increase-migration-cooldown",
+            "reason": "Auto migrations are beginning to appear.",
+            "expected_effect": "Reduce churn if migration pressure continues."
+          }
+        ],
+        "guardrails": ["do_not_auto_apply", "cooldown_window_active"]
+      },
+      "servers": [
+        { "id": 0, "status": "normal", "cpu": 38, "mem": 35, "net": 44 },
+        { "id": 1, "status": "normal", "cpu": 46, "mem": 40, "net": 57 },
+        { "id": 2, "status": "normal", "cpu": 31, "mem": 48, "net": 42 },
+        { "id": 3, "status": "normal", "cpu": 45, "mem": 38, "net": 51 },
+        { "id": 4, "status": "normal", "cpu": 28, "mem": 34, "net": 39 },
+        { "id": 5, "status": "normal", "cpu": 36, "mem": 31, "net": 35 },
+        { "id": 6, "status": "normal", "cpu": 41, "mem": 46, "net": 52 },
+        { "id": 7, "status": "normal", "cpu": 22, "mem": 28, "net": 33 }
+      ],
+      "events": ["One automatic migration observed.", "AIOps marks migration-watch."]
+    },
+    {
+      "tick": 15,
+      "global_state": {
+        "active_cpu_util": 0.58,
+        "active_mem_util": 0.55,
+        "active_net_util": 0.78,
+        "current_auto_migrations": 3,
+        "net_sla_violations": 0
+      },
+      "aiops": {
+        "risk_level": "medium",
+        "risk_score": 0.3,
+        "risk_tags": ["network-watch", "migration-watch"],
+        "active_alerts": [
+          { "tag": "network-watch", "occurrence_count": 1 },
+          { "tag": "migration-watch", "occurrence_count": 2 }
+        ],
+        "root_cause_summary": "Network utilization is approaching the watch threshold.",
+        "recommendations": [
+          {
+            "action": "enable-network-headroom-protection",
+            "reason": "Network utilization is rising before SLA impact.",
+            "expected_effect": "Preserve network headroom."
+          }
+        ],
+        "guardrails": ["do_not_auto_apply", "human_approval_required"]
+      },
+      "servers": [
+        { "id": 0, "status": "normal", "cpu": 50, "mem": 49, "net": 66 },
+        { "id": 1, "status": "warning", "cpu": 61, "mem": 57, "net": 79 },
+        { "id": 2, "status": "normal", "cpu": 44, "mem": 60, "net": 58 },
+        { "id": 3, "status": "warning", "cpu": 59, "mem": 52, "net": 74 },
+        { "id": 4, "status": "normal", "cpu": 39, "mem": 42, "net": 54 },
+        { "id": 5, "status": "normal", "cpu": 48, "mem": 39, "net": 47 },
+        { "id": 6, "status": "warning", "cpu": 56, "mem": 58, "net": 72 },
+        { "id": 7, "status": "normal", "cpu": 35, "mem": 41, "net": 50 }
+      ],
+      "events": ["Network utilization crosses watch threshold.", "Several servers enter warning state."]
+    },
+    {
+      "tick": 23,
+      "global_state": {
+        "active_cpu_util": 0.67,
+        "active_mem_util": 0.62,
+        "active_net_util": 0.91,
+        "current_auto_migrations": 6,
+        "net_sla_violations": 1
+      },
+      "aiops": {
+        "risk_level": "critical",
+        "risk_score": 0.95,
+        "risk_tags": ["network-pressure", "migration-pressure", "sla-risk"],
+        "active_alerts": [
+          { "tag": "network-pressure", "occurrence_count": 1 },
+          { "tag": "migration-pressure", "occurrence_count": 1 },
+          { "tag": "sla-risk", "occurrence_count": 1 }
+        ],
+        "root_cause_summary": "Network pressure is the dominant SLA risk signal.",
+        "recommendations": [
+          {
+            "action": "enable-network-headroom-protection",
+            "reason": "Network SLA violations started while network utilization is above pressure threshold.",
+            "expected_effect": "Reduce network-focused SLA violations."
+          },
+          {
+            "action": "increase-migration-cooldown",
+            "reason": "Auto migrations increased sharply.",
+            "expected_effect": "Stabilize placements and reduce churn."
+          }
+        ],
+        "guardrails": ["do_not_auto_apply", "rollback_if_sla_worsens", "cooldown_window_active"]
+      },
+      "servers": [
+        { "id": 0, "status": "warning", "cpu": 66, "mem": 61, "net": 86 },
+        { "id": 1, "status": "overload", "cpu": 72, "mem": 67, "net": 93 },
+        { "id": 2, "status": "warning", "cpu": 59, "mem": 64, "net": 81 },
+        { "id": 3, "status": "overload", "cpu": 70, "mem": 61, "net": 91 },
+        { "id": 4, "status": "warning", "cpu": 54, "mem": 57, "net": 76 },
+        { "id": 5, "status": "normal", "cpu": 57, "mem": 52, "net": 69 },
+        { "id": 6, "status": "warning", "cpu": 65, "mem": 66, "net": 88 },
+        { "id": 7, "status": "warning", "cpu": 49, "mem": 54, "net": 74 }
+      ],
+      "events": ["Network SLA violation detected.", "AIOps raises critical risk.", "Recommendation emitted with approval guardrail."]
+    },
+    {
+      "tick": 30,
+      "global_state": {
+        "active_cpu_util": 0.63,
+        "active_mem_util": 0.61,
+        "active_net_util": 0.87,
+        "current_auto_migrations": 4,
+        "net_sla_violations": 1
+      },
+      "aiops": {
+        "risk_level": "high",
+        "risk_score": 0.55,
+        "risk_tags": ["network-pressure", "migration-watch", "sla-risk"],
+        "active_alerts": [
+          { "tag": "network-pressure", "occurrence_count": 2 },
+          { "tag": "sla-risk", "occurrence_count": 2 }
+        ],
+        "root_cause_summary": "Network pressure remains active while recommendation cooldown is in effect.",
+        "recommendations": [],
+        "guardrails": ["recommendation_suppressed_by_cooldown", "do_not_auto_apply"]
+      },
+      "servers": [
+        { "id": 0, "status": "warning", "cpu": 62, "mem": 58, "net": 82 },
+        { "id": 1, "status": "warning", "cpu": 69, "mem": 64, "net": 88 },
+        { "id": 2, "status": "warning", "cpu": 56, "mem": 61, "net": 78 },
+        { "id": 3, "status": "warning", "cpu": 66, "mem": 60, "net": 85 },
+        { "id": 4, "status": "normal", "cpu": 51, "mem": 53, "net": 70 },
+        { "id": 5, "status": "normal", "cpu": 53, "mem": 48, "net": 64 },
+        { "id": 6, "status": "warning", "cpu": 61, "mem": 62, "net": 83 },
+        { "id": 7, "status": "normal", "cpu": 46, "mem": 50, "net": 68 }
+      ],
+      "events": ["Risk remains high.", "No repeated recommendation due to cooldown."]
+    },
+    {
+      "tick": 40,
+      "global_state": {
+        "active_cpu_util": 0.52,
+        "active_mem_util": 0.49,
+        "active_net_util": 0.63,
+        "current_auto_migrations": 1,
+        "net_sla_violations": 0
+      },
+      "aiops": {
+        "risk_level": "low",
+        "risk_score": 0.1,
+        "risk_tags": ["migration-watch"],
+        "active_alerts": [{ "tag": "migration-watch", "occurrence_count": 1 }],
+        "root_cause_summary": "Network risk has cleared; migration watch remains low.",
+        "recommendations": [],
+        "guardrails": ["do_not_auto_apply"]
+      },
+      "servers": [
+        { "id": 0, "status": "normal", "cpu": 49, "mem": 46, "net": 57 },
+        { "id": 1, "status": "normal", "cpu": 55, "mem": 51, "net": 63 },
+        { "id": 2, "status": "normal", "cpu": 43, "mem": 49, "net": 52 },
+        { "id": 3, "status": "normal", "cpu": 53, "mem": 48, "net": 59 },
+        { "id": 4, "status": "normal", "cpu": 38, "mem": 43, "net": 48 },
+        { "id": 5, "status": "normal", "cpu": 42, "mem": 39, "net": 44 },
+        { "id": 6, "status": "normal", "cpu": 48, "mem": 50, "net": 58 },
+        { "id": 7, "status": "normal", "cpu": 36, "mem": 41, "net": 45 }
+      ],
+      "events": ["Network pressure clears.", "AIOps risk returns to low."]
+    }
+  ]
+}

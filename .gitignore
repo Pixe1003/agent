@@ -7,3 +7,4 @@ benchmark/results/*.csv
 benchmark/results/*.json
 benchmark/results/*.png
 dataset/*.jsonl
+dashboard/aiops-stream.json

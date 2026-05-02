@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AIOps Realtime Dashboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Multi-Agent Cloud Scheduler</p>
+          <h1>AIOps Realtime Dashboard</h1>
+        </div>
+        <div class="status-strip" aria-label="Current AIOps status">
+          <div>
+            <span>Tick</span>
+            <strong id="current-tick">0</strong>
+          </div>
+          <div>
+            <span>Risk</span>
+            <strong id="risk-level">low</strong>
+          </div>
+          <div>
+            <span>Score</span>
+            <strong id="risk-score">0.00</strong>
+          </div>
+          <div>
+            <span>Alerts</span>
+            <strong id="alert-count">0</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="layout">
+        <section class="servers-panel" aria-labelledby="servers-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Execution Layer</p>
+              <h2 id="servers-title">Server Fleet</h2>
+            </div>
+            <span id="algorithm-label" class="pill">AI-phase2</span>
+          </div>
+          <div id="server-grid" class="server-grid" aria-live="polite"></div>
+        </section>
+
+        <section class="charts-panel" aria-labelledby="charts-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Realtime Signals</p>
+              <h2 id="charts-title">Risk and Utilization</h2>
+            </div>
+          </div>
+          <div class="chart-stack">
+            <div class="chart-box">
+              <div class="chart-title">
+                <span>AIOps Risk Score</span>
+                <strong id="chart-risk-label">0.00</strong>
+              </div>
+              <canvas id="risk-canvas" width="720" height="220" aria-label="AIOps risk score chart"></canvas>
+            </div>
+            <div class="chart-box">
+              <div class="chart-title">
+                <span>Active Utilization</span>
+                <strong>CPU / MEM / NET</strong>
+              </div>
+              <canvas id="utilization-canvas" width="720" height="220" aria-label="Cluster utilization chart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <aside class="aiops-panel" aria-labelledby="aiops-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Control Layer</p>
+              <h2 id="aiops-title">AIOps Insight</h2>
+            </div>
+          </div>
+          <div class="insight-card">
+            <span id="aiops-level-badge" class="risk-badge">low</span>
+            <p id="root-cause">No elevated AIOps risk signals detected.</p>
+          </div>
+          <div>
+            <h3>Risk Tags</h3>
+            <div id="aiops-tags" class="tag-list"></div>
+          </div>
+          <div>
+            <h3>Recommendations</h3>
+            <div id="recommendations" class="recommendation-list"></div>
+          </div>
+          <div>
+            <h3>Guardrails</h3>
+            <div id="guardrails" class="guardrail-list"></div>
+          </div>
+          <div>
+            <h3>Event Stream</h3>
+            <ol id="event-stream" class="event-stream"></ol>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
