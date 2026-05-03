@@ -1,5 +1,5 @@
 def render_mermaid() -> str:
-    """Return the Phase 2 state machine as Mermaid text."""
+    """Return the multi-agent state machine as Mermaid text."""
     return """flowchart LR
     START([START]) --> Planner[Planner]
     Planner --> Scheduler[Scheduler]
@@ -8,4 +8,3 @@ def render_mermaid() -> str:
     Critic -->|revise and revise_count < 2| Scheduler
     Critic -->|fallback| END
 """
-

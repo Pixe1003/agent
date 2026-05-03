@@ -5,7 +5,7 @@ Prompt 模板和 state 渲染。
 - 系统提示硬约束：必须调用两个 tool 之一，禁止自由文本。
 - 用表格渲染 cluster state，数值精确到 1 位小数，降低 LLM 读数错误。
 - `/no_think` 是 Qwen3 的官方开关，关闭思考模式以换取延迟。
-  Phase 2 的 Scheduler Agent 需要 ReAct，到时候移除这个标签。
+  multi_agent 的 Scheduler 节点需要 ReAct 时再移除这个标签。
 """
 from .schemas import SchedulingContext
 

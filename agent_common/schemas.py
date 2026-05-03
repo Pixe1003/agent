@@ -1,5 +1,5 @@
 """
-Pydantic schemas for scheduler agent.
+Pydantic schemas for the cloud scheduling agents.
 
 约束原则：
 1. 所有 LLM 输出必须能通过 Pydantic 验证，否则走 fallback。
@@ -50,7 +50,7 @@ class SchedulingContext(BaseModel):
 
 class select_server(BaseModel):
     """Deploy the incoming service on the chosen server.
-    
+
     Call this tool when you have identified a server that can accommodate
     the service without exceeding the overutilization threshold on any
     resource dimension (CPU, RAM, Network).
@@ -71,7 +71,7 @@ class select_server(BaseModel):
 class reject_service(BaseModel):
     """Reject the incoming service because no server in the cluster can
     accommodate it without exceeding the overutilization threshold.
-    
+
     Only call this tool if you have checked all servers and none can host
     the service on every resource dimension.
     """
@@ -84,7 +84,7 @@ class reject_service(BaseModel):
 
 
 # =============================================================================
-# Internal decision record —— 供 Phase 3 memory 模块消费
+# Internal decision record —— 供 memory 模块消费
 # =============================================================================
 
 class SchedulingDecision(BaseModel):

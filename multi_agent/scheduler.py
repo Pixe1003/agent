@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import statistics
+import math
+import statistics  # noqa: F401  (kept for backward-compat; _cluster_fragmentation now hand-inlined)
 import time
 from typing import Any, Literal, Protocol, TypedDict
 
 from agent_common.tracing import TraceLogger
-from agent_phase1.prompts import render_cluster_state
-from agent_phase1.schemas import (
+from agent_common.prompts import render_cluster_state
+from agent_common.schemas import (
     SchedulingContext,
     SchedulingDecision,
     ServerSnapshot,
@@ -107,7 +108,7 @@ class OllamaStructuredBackend:
         except ImportError as e:
             raise RuntimeError(
                 "LangChain/Ollama dependencies are missing. "
-                "Run: pip install -r agent_phase1/requirements.txt"
+                "Run: pip install -r requirements.txt"
             ) from e
 
         kwargs: dict[str, Any] = {
@@ -178,7 +179,7 @@ def init_agent(
     base_url: str | None = None,
     **_: Any,
 ) -> None:
-    """Initialize Phase 2.
+    """Initialize the multi-agent scheduler.
 
     The NetLogo-facing API stays stable. backend="auto" uses the hybrid path:
     fast deterministic scheduling for normal cases, with complexity metadata
@@ -205,7 +206,7 @@ def init_agent(
     _TRACE_LOGGER = TraceLogger(
         trace_dir=trace_dir,
         run_id=run_id,
-        phase="phase2",
+        phase="multi_agent",
         model=model_name,
         enabled=enable_tracing,
     )
@@ -216,6 +217,7 @@ def schedule_service(
     service_req_raw: list,
     global_state_raw: Any | None = None,
     memory_context_raw: Any | None = None,
+    aiops_insight_raw: Any | None = None,
 ) -> int:
     global _LAST_DECISION
     t0 = time.perf_counter()
@@ -224,6 +226,7 @@ def schedule_service(
         ctx = _parse_context(servers_raw, service_req_raw)
         risk = _parse_risk_snapshot(global_state_raw)
         memory_context = _parse_memory_context(memory_context_raw)
+        aiops_insight = _parse_aiops_insight(aiops_insight_raw)
     except (ValidationError, ValueError, IndexError, TypeError) as e:
         decision = SchedulingDecision(
             action="fallback",
@@ -246,29 +249,42 @@ def schedule_service(
 
     if _BACKEND_MODE == "structured":
         final_state = _run_structured_graph(ctx, _analyze_global_risk(risk), memory_context)
-        _LAST_DECISION, result = _decision_from_structured_state(final_state, t0)
+        _LAST_DECISION, result = _decision_from_structured_state(final_state, t0, aiops_insight=aiops_insight)
         _record_hybrid_stats(_LAST_DECISION)
         return result
 
     if _BACKEND_MODE == "hybrid":
-        _LAST_DECISION, result = _run_hybrid(ctx, risk, memory_context, t0)
+        _LAST_DECISION, result = _run_hybrid(ctx, risk, memory_context, t0, aiops_insight=aiops_insight)
         _record_hybrid_stats(_LAST_DECISION)
         return result
 
-    _LAST_DECISION, result = _run_heuristic(ctx, t0)
+    _LAST_DECISION, result = _run_heuristic(ctx, t0, aiops_insight=aiops_insight)
     _record_hybrid_stats(_LAST_DECISION)
     return result
 
 
-def _run_heuristic(ctx: SchedulingContext, t0: float, extra: dict[str, Any] | None = None) -> tuple[dict[str, Any], int]:
+def _run_heuristic(
+    ctx: SchedulingContext,
+    t0: float,
+    extra: dict[str, Any] | None = None,
+    aiops_insight: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], int]:
     strategy_tag, strategy_reasoning = _plan(ctx)
     excluded: set[int] = set()
     revise_count = 0
     risk_policy = (extra or {}).get("risk_policy")
+    aiops_critic_triggered = False
+    aiops_critic_revisions = 0
 
     while revise_count <= 2:
         proposal = _propose(ctx, excluded, risk_policy=risk_policy)
         if proposal is None:
+            aiops_extra = _aiops_decision_extra(
+                aiops_insight,
+                triggered=aiops_critic_triggered,
+                revisions=aiops_critic_revisions,
+            )
+            merged_extra = {**(extra or {}), **aiops_extra} if aiops_extra else extra
             decision = SchedulingDecision(
                 action="reject",
                 reasoning="No server can host the service without exceeding resource headroom.",
@@ -285,12 +301,27 @@ def _run_heuristic(ctx: SchedulingContext, t0: float, extra: dict[str, Any] | No
                 critic_verdict="approve",
                 structured_output_succeeded=False,
                 revise_count=revise_count,
-                extra=extra,
+                extra=merged_extra,
             )
             return data, -2
 
         verdict, critic_reasoning = _critic(ctx, proposal)
+
+        # AIOps-aware critic：基础 critic 通过后再加一道安全边际检查
+        if verdict == "approve" and aiops_insight is not None:
+            aiops_verdict = _aiops_critic_check(ctx, proposal, aiops_insight)
+            if aiops_verdict is not None:
+                verdict, critic_reasoning = aiops_verdict
+                aiops_critic_triggered = True
+                aiops_critic_revisions += 1
+
         if verdict == "approve":
+            aiops_extra = _aiops_decision_extra(
+                aiops_insight,
+                triggered=aiops_critic_triggered,
+                revisions=aiops_critic_revisions,
+            )
+            merged_extra = {**(extra or {}), **aiops_extra} if aiops_extra else extra
             decision = SchedulingDecision(
                 action="select",
                 server_id=proposal.server_id,
@@ -314,13 +345,19 @@ def _run_heuristic(ctx: SchedulingContext, t0: float, extra: dict[str, Any] | No
                 critic_reasoning=critic_reasoning,
                 structured_output_succeeded=False,
                 revise_count=revise_count,
-                extra=extra,
+                extra=merged_extra,
             )
             return data, proposal.server_id
 
         excluded.add(proposal.server_id)
         revise_count += 1
 
+    aiops_extra = _aiops_decision_extra(
+        aiops_insight,
+        triggered=aiops_critic_triggered,
+        revisions=aiops_critic_revisions,
+    )
+    merged_extra = {**(extra or {}), **aiops_extra} if aiops_extra else extra
     decision = SchedulingDecision(
         action="fallback",
         reasoning="Critic requested too many revisions; falling back to Balanced-Fit.",
@@ -338,9 +375,33 @@ def _run_heuristic(ctx: SchedulingContext, t0: float, extra: dict[str, Any] | No
         structured_output_succeeded=False,
         revise_count=revise_count,
         fallback_reason=decision.reasoning,
-        extra=extra,
+        extra=merged_extra,
     )
     return data, -1
+
+
+def _aiops_decision_extra(
+    aiops_insight: dict[str, Any] | None,
+    *,
+    triggered: bool,
+    revisions: int,
+) -> dict[str, Any]:
+    """生成写入 decision 字典的 AIOps 元数据。"""
+    if not aiops_insight or not aiops_insight.get("available"):
+        return {
+            "aiops_aware": False,
+            "aiops_critic_triggered": False,
+            "aiops_critic_revisions": 0,
+        }
+    return {
+        "aiops_aware": True,
+        "aiops_critic_triggered": bool(triggered),
+        "aiops_critic_revisions": int(revisions),
+        "aiops_risk_level": aiops_insight.get("risk_level", "low"),
+        "aiops_risk_score": aiops_insight.get("risk_score", 0.0),
+        "aiops_risk_tags": list(aiops_insight.get("risk_tags") or []),
+        "aiops_active_alert_count": len(aiops_insight.get("active_alerts") or []),
+    }
 
 
 def last_decision_summary() -> str:
@@ -395,6 +456,7 @@ def _run_hybrid(
     risk: RiskSnapshot,
     memory_context: dict[str, Any],
     t0: float,
+    aiops_insight: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
     risk_analysis = _analyze_global_risk(risk)
     analysis = _analyze_complexity(ctx, risk_analysis, memory_context)
@@ -405,8 +467,9 @@ def _run_hybrid(
             final_state,
             t0,
             extra=_hybrid_metadata(analysis, fast_path_used=False),
+            aiops_insight=aiops_insight,
         )
-    return _run_heuristic(ctx, t0, extra=metadata)
+    return _run_heuristic(ctx, t0, extra=metadata, aiops_insight=aiops_insight)
 
 
 def _hybrid_metadata(analysis: dict[str, Any], *, fast_path_used: bool) -> dict[str, Any]:
@@ -800,8 +863,14 @@ def _decision_from_structured_state(
     state: AgentState,
     t0: float,
     extra: dict[str, Any] | None = None,
+    aiops_insight: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
     extra = _merge_memory_metadata(extra, state.get("memory_context"))
+    # Structured 路径暂未把 AIOps critic 内嵌进 graph，先把 metadata 透传出去，
+    # 让 trace / NetLogo Monitor 能看到 AIOps 是否在场。
+    aiops_extra = _aiops_decision_extra(aiops_insight, triggered=False, revisions=0)
+    if aiops_extra:
+        extra = {**(extra or {}), **aiops_extra}
     strategy_tag = state.get("strategy_tag")
     strategy_reasoning = state.get("strategy_reasoning")
     critic_verdict = state.get("critic_verdict")
@@ -945,21 +1014,28 @@ def _coerce_scheduler_proposal(raw: SchedulerProposal | dict[str, Any] | Any) ->
 
 
 def _parse_context(servers_raw: list, service_req_raw: list) -> SchedulingContext:
-    return SchedulingContext(
-        servers=[
-            ServerSnapshot(
-                server_id=int(s[0]),
-                cpu_free_pct=float(s[1]),
-                ram_free_pct=float(s[2]),
-                net_free_pct=float(s[3]),
-            )
-            for s in servers_raw
-        ],
-        service=ServiceRequest(
-            cpu_pct=float(service_req_raw[0]),
-            ram_pct=float(service_req_raw[1]),
-            net_pct=float(service_req_raw[2]),
-        ),
+    """Hot-path parser. Inputs come from trusted callers (NetLogo / benchmark sim),
+    so we use Pydantic's `model_construct` to skip per-field range validation
+    (5-10× faster than `model_validate`). Type coercion via int()/float() still
+    raises ValueError/TypeError on bad input, caught upstream by schedule_service."""
+    servers = [
+        ServerSnapshot.model_construct(
+            server_id=int(s[0]),
+            cpu_free_pct=float(s[1]),
+            ram_free_pct=float(s[2]),
+            net_free_pct=float(s[3]),
+        )
+        for s in servers_raw
+    ]
+    service = ServiceRequest.model_construct(
+        cpu_pct=float(service_req_raw[0]),
+        ram_pct=float(service_req_raw[1]),
+        net_pct=float(service_req_raw[2]),
+    )
+    return SchedulingContext.model_construct(
+        servers=servers,
+        service=service,
+        overutil_threshold_pct=90.0,
     )
 
 
@@ -977,6 +1053,125 @@ def _parse_risk_snapshot(global_state_raw: Any | None) -> RiskSnapshot:
                 data[str(item[0])] = item[1]
         return RiskSnapshot.model_validate(data)
     raise TypeError(f"Unsupported global risk state: {type(global_state_raw).__name__}")
+
+
+def _parse_aiops_insight(aiops_insight_raw: Any | None) -> dict[str, Any]:
+    """解析 agent_aiops.observe_ops_state() 的输出，归一化成 critic 能消费的形态。
+
+    支持的输入：
+    - None / 空：返回空 insight (no-op)
+    - dict (推荐)：直接读取 risk_tags / active_alerts / risk_level / risk_score
+    - list[(key, value)]：兼容 NetLogo 端的 py:set 序列化形式
+    """
+    if aiops_insight_raw is None:
+        return {"available": False, "risk_tags": [], "active_alerts": [], "risk_level": "low", "risk_score": 0.0}
+
+    raw: dict[str, Any]
+    if isinstance(aiops_insight_raw, dict):
+        raw = aiops_insight_raw
+    elif isinstance(aiops_insight_raw, (list, tuple)) and all(
+        isinstance(item, (list, tuple)) and len(item) == 2 for item in aiops_insight_raw
+    ):
+        raw = {str(k): v for k, v in aiops_insight_raw}
+    else:
+        return {"available": False, "risk_tags": [], "active_alerts": [], "risk_level": "low", "risk_score": 0.0}
+
+    risk_tags_raw = raw.get("risk_tags") or []
+    risk_tags = [str(t) for t in risk_tags_raw] if isinstance(risk_tags_raw, (list, tuple)) else []
+
+    active_alerts_raw = raw.get("active_alerts") or []
+    active_alerts: list[dict[str, Any]] = []
+    if isinstance(active_alerts_raw, (list, tuple)):
+        for alert in active_alerts_raw:
+            if isinstance(alert, dict):
+                active_alerts.append(
+                    {
+                        "tag": str(alert.get("tag", "")),
+                        "occurrence_count": int(alert.get("occurrence_count") or 0),
+                        "risk_score": float(alert.get("risk_score") or 0.0),
+                    }
+                )
+
+    return {
+        "available": True,
+        "risk_tags": risk_tags,
+        "active_alerts": active_alerts,
+        "risk_level": str(raw.get("risk_level", "low")),
+        "risk_score": float(raw.get("risk_score", 0.0)),
+    }
+
+
+def _aiops_critic_check(
+    ctx: SchedulingContext,
+    proposal: ServerSnapshot,
+    aiops_insight: dict[str, Any],
+    safety_margin: float = 15.0,
+    persistent_alert_threshold: int = 2,
+) -> tuple[str, str] | None:
+    """AIOps-aware critic：在基础 critic 通过后再加一道安全边际检查。
+
+    返回 (verdict, reasoning) 表示需要 revise；返回 None 表示放行。
+
+    收紧规则：
+    - 如果 AIOps 报 "network-pressure" / "cpu-pressure" / "memory-pressure"，
+      对应维度的 post-placement headroom 必须 >= safety_margin。
+    - 如果 AIOps 报 "sla-risk" / "capacity-risk"，所有维度都必须 >= safety_margin。
+    - 持续 >= persistent_alert_threshold 个窗口的 alert 把安全边际提升到 1.5 倍。
+    """
+    if not aiops_insight.get("available"):
+        return None
+
+    risk_tags = set(aiops_insight.get("risk_tags") or [])
+    if not risk_tags:
+        return None
+
+    # 持续告警 → 收紧 margin
+    persistent_tags = {
+        alert["tag"]
+        for alert in aiops_insight.get("active_alerts") or []
+        if alert.get("occurrence_count", 0) >= persistent_alert_threshold
+    }
+    effective_margin = safety_margin * (1.5 if persistent_tags & risk_tags else 1.0)
+
+    residual = {
+        "CPU": proposal.cpu_free_pct - ctx.service.cpu_pct,
+        "RAM": proposal.ram_free_pct - ctx.service.ram_pct,
+        "NET": proposal.net_free_pct - ctx.service.net_pct,
+    }
+
+    triggers: list[str] = []
+
+    if {"network-pressure", "network-watch"} & risk_tags:
+        if residual["NET"] < effective_margin:
+            triggers.append(
+                f"NET headroom {residual['NET']:.1f}% < margin {effective_margin:.1f}% "
+                f"under {sorted({'network-pressure', 'network-watch'} & risk_tags)}"
+            )
+
+    if "cpu-pressure" in risk_tags and residual["CPU"] < effective_margin:
+        triggers.append(
+            f"CPU headroom {residual['CPU']:.1f}% < margin {effective_margin:.1f}% under cpu-pressure"
+        )
+
+    if "memory-pressure" in risk_tags and residual["RAM"] < effective_margin:
+        triggers.append(
+            f"RAM headroom {residual['RAM']:.1f}% < margin {effective_margin:.1f}% under memory-pressure"
+        )
+
+    if {"sla-risk", "capacity-risk"} & risk_tags:
+        for dim, value in residual.items():
+            if value < effective_margin:
+                triggers.append(
+                    f"{dim} headroom {value:.1f}% < margin {effective_margin:.1f}% "
+                    f"under {sorted({'sla-risk', 'capacity-risk'} & risk_tags)}"
+                )
+                break
+
+    if not triggers:
+        return None
+
+    persistent_note = " (persistent alert tightened margin)" if persistent_tags & risk_tags else ""
+    return "revise", "AIOps-aware critic" + persistent_note + ": " + "; ".join(triggers)
 
 
 def _parse_memory_context(memory_context_raw: Any | None) -> dict[str, Any]:
@@ -1084,12 +1279,26 @@ def _candidate_score(
 
 
 def _cluster_fragmentation(ctx: SchedulingContext) -> float:
-    if not ctx.servers:
+    """Population stddev of all (server, dim) free-percent values.
+
+    Hand-inlined to avoid `statistics.pstdev` overhead (the original was 13.9% of
+    benchmark cumtime). E[X²] - E[X]² formulation is single-pass.
+    """
+    servers = ctx.servers
+    if not servers:
         return 0.0
-    values = []
-    for server in ctx.servers:
-        values.extend([server.cpu_free_pct, server.ram_free_pct, server.net_free_pct])
-    return statistics.pstdev(values)
+    n = len(servers) * 3
+    s = 0.0
+    sq = 0.0
+    for server in servers:
+        v1 = server.cpu_free_pct
+        v2 = server.ram_free_pct
+        v3 = server.net_free_pct
+        s += v1 + v2 + v3
+        sq += v1 * v1 + v2 * v2 + v3 * v3
+    mean = s / n
+    var = sq / n - mean * mean
+    return math.sqrt(var) if var > 0.0 else 0.0
 
 
 def _critic(ctx: SchedulingContext, proposal: ServerSnapshot) -> tuple[str, str]:
@@ -1131,7 +1340,7 @@ def _record_decision(
     data = decision.model_dump()
     data.update(
         {
-            "phase": "phase2",
+            "phase": "multi_agent",
             "model": _MODEL_NAME,
             "backend": _BACKEND_MODE,
             "strategy_tag": strategy_tag,
@@ -1175,6 +1384,10 @@ def _empty_hybrid_stats() -> dict[str, Any]:
         "total_latency_ms": 0.0,
         "complexity_reason_counts": {},
         "risk_tag_counts": {},
+        "aiops_aware_decisions": 0,
+        "aiops_critic_triggered_decisions": 0,
+        "aiops_critic_revisions_total": 0,
+        "aiops_risk_tag_counts": {},
     }
 
 
@@ -1222,12 +1435,23 @@ def _record_hybrid_stats(decision: dict[str, Any]) -> None:
     for tag in decision.get("global_risk_tags") or []:
         risk_tag_counts[tag] = risk_tag_counts.get(tag, 0) + 1
 
+    if decision.get("aiops_aware") is True:
+        _HYBRID_STATS["aiops_aware_decisions"] += 1
+    if decision.get("aiops_critic_triggered") is True:
+        _HYBRID_STATS["aiops_critic_triggered_decisions"] += 1
+    _HYBRID_STATS["aiops_critic_revisions_total"] += int(decision.get("aiops_critic_revisions") or 0)
+    aiops_tag_counts = _HYBRID_STATS["aiops_risk_tag_counts"]
+    for tag in decision.get("aiops_risk_tags") or []:
+        aiops_tag_counts[tag] = aiops_tag_counts.get(tag, 0) + 1
+
 
 def _stats_with_ratios(stats: dict[str, Any]) -> dict[str, Any]:
     total = stats.get("total_decisions", 0)
     hybrid_total = stats.get("hybrid_decisions", 0)
     data = dict(stats or _empty_hybrid_stats())
     data["risk_tag_counts"] = dict(data.get("risk_tag_counts", {}))
+    data["aiops_risk_tag_counts"] = dict(data.get("aiops_risk_tag_counts", {}))
+    aiops_aware = data.get("aiops_aware_decisions", 0)
     data.update(
         {
             "fast_path_ratio": _safe_ratio(data["fast_path_decisions"], hybrid_total),
@@ -1241,6 +1465,10 @@ def _stats_with_ratios(stats: dict[str, Any]) -> dict[str, Any]:
             "memory_usage_ratio": _safe_ratio(data["memory_used_decisions"], total),
             "avg_retrieved_episode_count": _safe_ratio(data["retrieved_episode_count"], total),
             "avg_latency_ms": _safe_ratio(data["total_latency_ms"], total),
+            "aiops_aware_ratio": _safe_ratio(aiops_aware, total),
+            "aiops_critic_trigger_ratio": _safe_ratio(
+                data.get("aiops_critic_triggered_decisions", 0), aiops_aware
+            ),
         }
     )
     return data

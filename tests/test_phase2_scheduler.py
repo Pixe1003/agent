@@ -1,4 +1,4 @@
-from agent_phase2 import (
+from multi_agent import (
     hybrid_stats,
     hybrid_stats_summary,
     init_agent,
@@ -6,7 +6,7 @@ from agent_phase2 import (
     last_decision_summary,
     schedule_service,
 )
-from agent_phase2.graph import render_mermaid
+from multi_agent.graph import render_mermaid
 
 
 class FakeStructuredBackend:

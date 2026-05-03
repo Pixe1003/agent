@@ -1,10 +1,10 @@
-# Phase 2 / Planner-Scheduler-Critic 控制层
+# multi_agent / Planner-Scheduler-Critic 控制层
 
-`agent_phase2` 保持 Phase 1 的 NetLogo 调用语义，同时增加 Planner-Scheduler-Critic control plane、全局风险感知、hybrid fast path 和可选 structured Agent 路径。
+`multi_agent` 在保持 NetLogo 调用语义稳定的同时，提供 Planner-Scheduler-Critic control plane、全局风险感知、hybrid fast path 和可选 structured Agent 路径。
 
 ## 定位 / Positioning
 
-Phase 2 不是每 tick 都调用 LLM 的在线调度器。它默认作为 Agent control plane：
+`multi_agent` 不是每 tick 都调用 LLM 的在线调度器，而是 Agent control plane：
 
 - 常规 placement 由确定性 fast path 立即返回 `server_id`。
 - 复杂场景写入 `agent_escalation_needed`、`complexity_score` 和 `complexity_reasons`。
@@ -23,7 +23,7 @@ Phase 2 不是每 tick 都调用 LLM 的在线调度器。它默认作为 Agent 
 ## 公共 API / Public API
 
 ```python
-from agent_phase2 import init_agent, schedule_service
+from multi_agent import init_agent, schedule_service
 
 init_agent(model_name="qwen3:8b", backend="auto")
 server_id = schedule_service([[0, 80, 80, 80]], [10, 10, 10])
@@ -58,7 +58,7 @@ server_id = schedule_service(
 ## 关键观测字段 / Observability
 
 ```python
-from agent_phase2 import hybrid_stats, hybrid_stats_summary
+from multi_agent import hybrid_stats, hybrid_stats_summary
 
 print(hybrid_stats_summary())
 print(hybrid_stats())
@@ -69,7 +69,7 @@ print(hybrid_stats())
 - `escalation_ratio`：复杂场景判定占比。
 - `global_risk_trigger_ratio`：全局风险触发升级信号的比例。
 - `hybrid_agent_call_ratio`：真实同步调用 structured Agent 的比例；默认 record 模式下应为 `0.0`。
-- `memory_usage_ratio`：Phase 3 retrieval 命中并传入 memory context 的比例。
+- `memory_usage_ratio`：`agent_memory` retrieval 命中并传入 memory context 的比例。
 - `planner_policy_ratio`：决策中存在 planner/risk policy 信号的比例。
 - `avg_latency_ms`：当前统计窗口内的平均调度延迟。
 
@@ -92,10 +92,12 @@ NetLogo Monitor 可使用：
 py:runresult "hybrid_stats_summary_phase2()"
 ```
 
+NetLogo 端把 `multi_agent` 的入口仍以 `init_agent_phase2` / `schedule_service_phase2` 等别名暴露，避免改动 UI 标签。
+
 ## Structured Agent Demo / 结构化 Agent 演示
 
 ```python
-from agent_phase2 import init_agent, schedule_service, last_decision_dict
+from multi_agent import init_agent, schedule_service, last_decision_dict
 
 init_agent(model_name="qwen3:8b", backend="hybrid", hybrid_agent_mode="sync")
 server_id = schedule_service([[0, 42, 42, 42]], [38, 38, 38])

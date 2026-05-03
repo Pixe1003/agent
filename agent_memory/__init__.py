@@ -1,4 +1,8 @@
-"""Phase 3 memory-augmented scheduler package."""
+"""Memory-augmented scheduler package.
+
+Wraps multi_agent with WorkingMemory + EpisodicMemory and exposes the
+NetLogo-facing API.
+"""
 
 from .scheduler import (
     agent_usage_stats,

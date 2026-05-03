@@ -328,11 +328,9 @@ to setup
   (py:run
     "import sys, os"
     "sys.path.insert(0, os.getcwd())"
-    "from agent_phase1 import init_agent, schedule_service, last_decision_summary"
-    "from agent_phase2 import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2, hybrid_stats_summary as hybrid_stats_summary_phase2, hybrid_stats as hybrid_stats_phase2, last_decision_dict as last_decision_dict_phase2"
-    "from agent_phase3 import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3, agent_usage_summary as agent_usage_summary_phase3, agent_usage_stats as agent_usage_stats_phase3, last_decision_dict as last_decision_dict_phase3"
+    "from multi_agent import init_agent as init_agent_phase2, schedule_service as schedule_service_phase2, last_decision_summary as last_decision_summary_phase2, hybrid_stats_summary as hybrid_stats_summary_phase2, hybrid_stats as hybrid_stats_phase2, last_decision_dict as last_decision_dict_phase2"
+    "from agent_memory import init_agent as init_agent_phase3, schedule_service as schedule_service_phase3, last_decision_summary as last_decision_summary_phase3, agent_usage_summary as agent_usage_summary_phase3, agent_usage_stats as agent_usage_stats_phase3, last_decision_dict as last_decision_dict_phase3"
     "from agent_aiops import init_agent as init_agent_aiops, observe_ops_state as observe_aiops_state, last_insight_summary as last_aiops_insight_summary, aiops_stats_summary"
-    "init_agent(model_name='qwen3:8b', temperature=0.1)"
     "init_agent_phase2(model_name='qwen3:8b', backend='auto')"
     "init_agent_phase3(model_name='heuristic')"
     "init_agent_aiops(model_name='heuristic', backend='rule')"
@@ -1232,7 +1230,10 @@ to-report find-AI-server [ the-server-set the-service ]
 
   py:set "servers_raw" servers-data
   py:set "service_raw" service-data
-  let sid py:runresult "schedule_service(servers_raw, service_raw)"
+  ;; phase1 已退役，"AI" / "AI-phase1" 入口现在统一走 multi_agent，
+  ;; 与 find-AI-phase2-server 行为一致。需要单独区分时再拆。
+  py:set "global_state_raw" global-state
+  let sid py:runresult "schedule_service_phase2(servers_raw, service_raw, global_state_raw)"
 
   (ifelse
     sid >= 0 [

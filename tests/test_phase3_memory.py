@@ -1,6 +1,6 @@
-from agent_phase1.schemas import SchedulingDecision
-from agent_phase3.memory import Episode, EpisodicMemory, WorkingMemory, summarize_context
-from agent_phase3 import agent_usage_stats, agent_usage_summary, init_agent, last_decision_dict, schedule_service
+from agent_common.schemas import SchedulingDecision
+from agent_memory.memory import Episode, EpisodicMemory, WorkingMemory, summarize_context
+from agent_memory import agent_usage_stats, agent_usage_summary, init_agent, last_decision_dict, schedule_service
 
 
 def test_working_memory_keeps_recent_successful_decisions():
@@ -48,6 +48,29 @@ def test_episodic_memory_retrieves_by_text_and_features(tmp_path):
 
     matches = store.retrieve("CPU pressure", [0.85, 0.45, 0.2], top_k=1)
     assert matches[0].episode_id == "cpu"
+
+
+def test_episodic_memory_default_writes_are_visible_to_new_store(tmp_path):
+    memory_path = tmp_path / "episodes.jsonl"
+    store = EpisodicMemory(path=memory_path)
+    store.add(
+        Episode(
+            episode_id="durable",
+            run_id="run",
+            tick=1,
+            state_summary_text="CPU pressure",
+            state_features=[0.9, 0.4, 0.2],
+            service_request={"cpu_pct": 30},
+            action_server_id=2,
+            reasoning_trace="picked CPU headroom",
+            reward=0.8,
+        )
+    )
+
+    fresh_store = EpisodicMemory(path=memory_path)
+    matches = fresh_store.retrieve("CPU pressure", [0.9, 0.4, 0.2], top_k=1)
+
+    assert matches[0].episode_id == "durable"
 
 
 def test_phase3_scheduler_records_memory_context():
@@ -115,7 +138,7 @@ def test_phase3_agent_usage_summary_reports_participation_metrics(tmp_path):
     summary = agent_usage_summary()
     assert stats["total_decisions"] == 1
     assert stats["memory_used_decisions"] == 1
-    assert "phase3 total=1" in summary
+    assert "agent_memory total=1" in summary
     assert "memory=1" in summary
     assert "avg_retrieved=1.00" in summary
     assert "agent_sync=0" in summary

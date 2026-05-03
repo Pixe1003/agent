@@ -3,15 +3,15 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-import agent_phase2
-from agent_phase1.schemas import SchedulingDecision
+import multi_agent
+from agent_common.schemas import SchedulingDecision
 from .memory import Episode, EpisodicMemory, WorkingMemory, summarize_context
 
 
 _WORKING_MEMORY = WorkingMemory(max_items=5)
 _EPISODIC_MEMORY = EpisodicMemory()
 _LAST_DECISION: dict[str, Any] = {}
-_RUN_ID = f"phase3-{uuid.uuid4().hex[:10]}"
+_RUN_ID = f"agent_memory-{uuid.uuid4().hex[:10]}"
 _TICK = 0
 
 
@@ -21,15 +21,29 @@ def init_agent(
     run_id: str | None = None,
     memory_path: str = "traces/episodes.jsonl",
     enable_tracing: bool = True,
+    persist_episodes: bool = True,
+    flush_every: int = 16,
     **kwargs: Any,
 ) -> None:
+    """Initialize agent_memory scheduler.
+
+    persist_episodes=False skips JSONL writes entirely (recommended for benchmarks
+    or short demos where cross-run persistence is not needed). Episodes still live
+    in process memory and are retrievable within the same session.
+    flush_every controls batched flushing when persist_episodes=True.
+    """
     global _WORKING_MEMORY, _EPISODIC_MEMORY, _LAST_DECISION, _RUN_ID, _TICK
-    _RUN_ID = run_id or f"phase3-{uuid.uuid4().hex[:10]}"
+    _RUN_ID = run_id or f"agent_memory-{uuid.uuid4().hex[:10]}"
     _TICK = 0
     _LAST_DECISION = {}
     _WORKING_MEMORY = WorkingMemory(max_items=5)
-    _EPISODIC_MEMORY = EpisodicMemory(memory_path)
-    agent_phase2.init_agent(
+    # 关掉旧 memory 的文件句柄，防止泄漏
+    try:
+        _EPISODIC_MEMORY.close()
+    except Exception:
+        pass
+    _EPISODIC_MEMORY = EpisodicMemory(memory_path, persist=persist_episodes, flush_every=flush_every)
+    multi_agent.init_agent(
         model_name=model_name,
         trace_dir=trace_dir,
         run_id=_RUN_ID,
@@ -38,7 +52,12 @@ def init_agent(
     )
 
 
-def schedule_service(servers_raw: list, service_req_raw: list, global_state_raw: Any | None = None) -> int:
+def schedule_service(
+    servers_raw: list,
+    service_req_raw: list,
+    global_state_raw: Any | None = None,
+    aiops_insight_raw: Any | None = None,
+) -> int:
     global _LAST_DECISION, _TICK
     _TICK += 1
     summary, features = summarize_context(servers_raw, service_req_raw)
@@ -56,9 +75,15 @@ def schedule_service(servers_raw: list, service_req_raw: list, global_state_raw:
         ],
     }
 
-    sid = agent_phase2.schedule_service(servers_raw, service_req_raw, global_state_raw, memory_context)
-    decision = agent_phase2.last_decision_dict()
-    decision["phase"] = "phase3"
+    sid = multi_agent.schedule_service(
+        servers_raw,
+        service_req_raw,
+        global_state_raw,
+        memory_context,
+        aiops_insight_raw,
+    )
+    decision = multi_agent.last_decision_dict()
+    decision["phase"] = "agent_memory"
     decision["memory_context"] = memory_context
     _LAST_DECISION = decision
 
@@ -101,16 +126,16 @@ def last_decision_summary() -> str:
 
 
 def agent_usage_stats() -> dict[str, Any]:
-    return agent_phase2.hybrid_stats()
+    return multi_agent.hybrid_stats()
 
 
 def agent_usage_summary() -> str:
     stats = agent_usage_stats()
     total = stats.get("total_decisions", 0)
     if total == 0:
-        return "phase3 total=0"
+        return "agent_memory total=0"
     return (
-        f"phase3 total={total} "
+        f"agent_memory total={total} "
         f"fast={stats.get('fast_path_decisions', 0)} "
         f"escalate={stats.get('agent_escalation_needed', 0)} "
         f"({stats.get('escalation_ratio', 0.0) * 100:.1f}%) "
