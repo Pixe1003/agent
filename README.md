@@ -27,6 +27,7 @@
 | `multi_agent/README.md` | `multi_agent` 的定位、backend 模式、公共 API、关键观测字段和 structured Agent demo。 |
 | `dashboard/README.md` | AIOps dashboard 的页面内容、数据格式、导出方式和 live NetLogo 同步方式。 |
 | `docs/architecture.md` | Excalidraw 架构图的查看、导出、分层布局、箭头含义和配色说明；本 README 已合并其核心架构内容。 |
+| `docs/architecture.png` | README 中展示的架构主图，适合直接用于仓库首页、简历和演示材料。 |
 | `docs/architecture.excalidraw` | 可编辑架构图源文件，可在 Excalidraw 或 VSCode 插件中打开。 |
 | `docs/aiops_agent.md` | AIOps Agent 的 API、内部角色、实时数据流和输出契约。 |
 | `docs/development_log_phase2_latency.md` | Phase 2 本地 LLM 调度延迟、tool calling、全局风险和 memory-aware 设计记录。 |
@@ -56,7 +57,9 @@ traces/            JSONL trace output directory
 
 ## 架构 / Architecture
 
-架构图源文件位于 `docs/architecture.excalidraw`，查看和导出说明见 `docs/architecture.md`。README 中保留 Mermaid 版本，方便 GitHub 直接渲染；Excalidraw 版本用于简历、PPT、LinkedIn 或需要更精致视觉表达的场景。
+![Multi-Agent Cloud Scheduler architecture](docs/architecture.png)
+
+架构图源文件位于 `docs/architecture.excalidraw`，PNG 版本位于 `docs/architecture.png`，查看和导出说明见 `docs/architecture.md`。README 中先展示手绘架构图，下面保留 Mermaid 版本作为可读文本 fallback。
 
 ### 分层说明
 

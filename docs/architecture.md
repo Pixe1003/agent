@@ -6,7 +6,7 @@
 
 1. 左上角菜单 → **Open** → 选 `docs/architecture.excalidraw`
 2. 或者：用文本编辑器打开 `docs/architecture.excalidraw` → 全选复制 → Excalidraw 画布上 `Ctrl+V`
-3. 编辑完后：**File → Save as image** → PNG 或 SVG，导出到 `docs/architecture.png`，README 顶部用 `![architecture](docs/architecture.png)` 引用
+3. 编辑完后：**File → Save as image** → PNG 或 SVG，导出到 `docs/architecture.png`，README 的 Architecture 段落会直接引用这张图
 
 也可以用本地 VSCode 插件 [Excalidraw](https://marketplace.visualstudio.com/items?itemName=pomdtr.excalidraw-editor) 直接在编辑器里打开 `.excalidraw` 文件。
 
@@ -48,17 +48,17 @@ traces → build_sft_dataset --v2 → Unsloth LoRA → agent_sft (llama.cpp + fa
 
 ## README 集成方式
 
-`README.md` 已经合并本文件的核心架构说明，并保留 Mermaid 版本用于 GitHub 直接渲染。`docs/architecture.excalidraw` 是更适合演示、简历、PPT 和 LinkedIn 的可编辑图源。
+`README.md` 已经合并本文件的核心架构说明，并在 Architecture 段落中展示 `docs/architecture.png`。`docs/architecture.excalidraw` 是更适合后续编辑的图源；Mermaid 版本保留为可读文本 fallback。
 
-如果需要在 README 顶部改用导出的静态图片，可以把架构段落中的 Mermaid 代码块替换为：
+README 中使用的图片引用为：
 
 ```markdown
-![architecture](docs/architecture.png)
+![Multi-Agent Cloud Scheduler architecture](docs/architecture.png)
 
 > 源文件：[`docs/architecture.excalidraw`](docs/architecture.excalidraw) — 用 [excalidraw.com](https://excalidraw.com) 打开可编辑。
 ```
 
-Mermaid 适合仓库首页的快速渲染；Excalidraw 导出的 PNG/SVG 更适合外部展示。同一项目保留两套图，按场景切换即可。
+PNG/SVG 更适合外部展示；Mermaid 适合审阅架构文本和在无法加载图片时保留结构信息。
 
 ## 备选：手动重画的 5 分钟版本
 
