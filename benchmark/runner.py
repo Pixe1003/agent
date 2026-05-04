@@ -453,6 +453,13 @@ def _algorithm(name: str, *, seed: int, distribution: str) -> Callable[[ServerRo
             persist_episodes=False,
         )
         return schedule_service
+    if name == "AI-sft-1.5b":
+        # SFT/LoRA fine-tuned model. 需要 dataset/qwen25-1p5b-sched-merged-q4.gguf 存在
+        # 且 pip install llama-cpp-python。模型缺失时这里抛 FileNotFoundError，
+        # 让 caller 决定跳过还是 abort。
+        from agent_sft import init_agent, schedule_service
+        init_agent(enable_tracing=False, n_gpu_layers=-1)
+        return schedule_service
     raise ValueError(f"Unknown algorithm: {name}")
 
 
@@ -463,6 +470,10 @@ def _last_decision(algorithm: str) -> dict:
         return last_decision_dict()
     if algorithm in ("AI-phase3", "AI-phase3-aiops"):
         from agent_memory import last_decision_dict
+
+        return last_decision_dict()
+    if algorithm == "AI-sft-1.5b":
+        from agent_sft import last_decision_dict
 
         return last_decision_dict()
     return {}
@@ -507,5 +518,6 @@ if __name__ == "__main__":
             "AI-phase3",
             "AI-phase2-aiops",
             "AI-phase3-aiops",
+            "AI-sft-1.5b",
         ],
     )
