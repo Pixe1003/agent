@@ -254,24 +254,6 @@ multi_agent 的 critic 会：
 
 每个 decision 字典都会带 `aiops_aware / aiops_critic_triggered / aiops_critic_revisions / aiops_risk_tags / aiops_risk_level / aiops_risk_score` 字段，可以从 `last_decision_dict()` 或 `hybrid_stats()` 取出来做监控。
 
-## Demo 录制 / Demo GIF
-
-招聘场景下，60 秒 GIF 比一段 README 更有说服力。Windows 自带方案：
-
-```powershell
-# 方案 A — Xbox Game Bar (Win+G，自带，无需安装)
-# 1. 打开 PowerShell 窗口
-# 2. Win+G 唤出 Game Bar，点击 "录制" 圆点
-# 3. 在 PowerShell 里按顺序跑：
-.\.venv\Scripts\python -m pytest tests -q                    # 显示测试通过
-.\.venv\Scripts\python -m demo.aiops_closedloop_demo         # 显示 A/B 对比
-# 4. 停止录制 (Win+Alt+R)。视频保存在 %USERPROFILE%\Videos\Captures
-# 5. 用 ScreenToGif (https://www.screentogif.com/) 把 mp4 转成 gif，
-#    或用在线工具 ezgif.com/video-to-gif 压到 < 5MB
-```
-
-把生成的 GIF 命名为 `docs/demo.gif`，README 顶部加一行 `![demo](docs/demo.gif)` 即可。
-
 ## NetLogo 集成 / NetLogo Integration
 
 模型文件在 `setup` 阶段导入 `multi_agent`、`agent_memory` 和 `agent_aiops`，并通过 NetLogo Python extension 调用对应的 `schedule_service_phase2(...)` / `schedule_service_phase3(...)` 入口（NetLogo 侧仍以 `phase2/phase3` 别名命名）。`multi_agent` 接收 `global_state_raw` 用于全局风险感知；`agent_memory` 检索历史案例并把 memory context 传给 `multi_agent`。
