@@ -301,6 +301,24 @@ def _run_algorithm(
     retrieved_episode_count = 0
     aiops_critic_triggered_count = 0
     aiops_aware_count = 0
+    monitor = None
+    if aiops_aware:
+        from agent_monitor import CalibratedRiskMonitor
+
+        monitor = CalibratedRiskMonitor()
+    monitor_shadow_count = 0
+    monitor_high_risk_count = 0
+    monitor_critical_count = 0
+    monitor_fallback_probability_total = 0.0
+    monitor_escalation_probability_total = 0.0
+    monitor_latency_ms_total = 0.0
+    monitor_state_counts = {
+        "normal": 0,
+        "watch": 0,
+        "risk": 0,
+        "protected": 0,
+        "critical": 0,
+    }
     latencies: list[float] = []
     energies: list[float] = []
     actives: list[float] = []
@@ -340,6 +358,22 @@ def _run_algorithm(
             aiops_aware_count += 1
         if decision.get("aiops_critic_triggered") is True:
             aiops_critic_triggered_count += 1
+
+        if monitor is not None:
+            t_monitor = time.perf_counter()
+            monitor_state = monitor.observe(aiops_insight, decision, tick=tick)
+            monitor_latency_ms_total += (time.perf_counter() - t_monitor) * 1000
+            monitor_shadow_count += 1
+            state_id = int(monitor_state.get("risk_state_id") or 0)
+            if state_id >= 2:
+                monitor_high_risk_count += 1
+            if state_id >= 4:
+                monitor_critical_count += 1
+            monitor_fallback_probability_total += float(monitor_state.get("fallback_probability") or 0.0)
+            monitor_escalation_probability_total += float(monitor_state.get("escalation_probability") or 0.0)
+            label = str(monitor_state.get("risk_state_label", "Normal")).lower()
+            if label in monitor_state_counts:
+                monitor_state_counts[label] += 1
 
         if sid == -1:
             fallbacks += 1
@@ -410,6 +444,28 @@ def _run_algorithm(
         "aiops_aware_count": aiops_aware_count,
         "aiops_critic_triggered_count": aiops_critic_triggered_count,
         "aiops_critic_trigger_rate": round(aiops_critic_triggered_count / total, 4),
+        "monitor_shadow_count": monitor_shadow_count,
+        "monitor_high_risk_count": monitor_high_risk_count,
+        "monitor_high_risk_rate": round(monitor_high_risk_count / total, 4),
+        "monitor_critical_count": monitor_critical_count,
+        "monitor_critical_rate": round(monitor_critical_count / total, 4),
+        "monitor_avg_fallback_probability": round(
+            monitor_fallback_probability_total / monitor_shadow_count if monitor_shadow_count else 0.0,
+            4,
+        ),
+        "monitor_avg_escalation_probability": round(
+            monitor_escalation_probability_total / monitor_shadow_count if monitor_shadow_count else 0.0,
+            4,
+        ),
+        "monitor_avg_latency_ms": round(
+            monitor_latency_ms_total / monitor_shadow_count if monitor_shadow_count else 0.0,
+            4,
+        ),
+        "monitor_state_normal_count": monitor_state_counts["normal"],
+        "monitor_state_watch_count": monitor_state_counts["watch"],
+        "monitor_state_risk_count": monitor_state_counts["risk"],
+        "monitor_state_protected_count": monitor_state_counts["protected"],
+        "monitor_state_critical_count": monitor_state_counts["critical"],
     }
 
 

@@ -1227,6 +1227,19 @@ to-report find-AI-server [ the-server-set the-service ]
   let ram-req-pct ([mem-cnf] of the-service / [mem-phy] of ref-svr) * 100
   let net-req-pct ([net-cnf] of the-service / [net-phy] of ref-svr) * 100
   let service-data (list cpu-req-pct ram-req-pct net-req-pct)
+  let global-state (list
+    (list "service_placement_algorithm" service-placement-algorithm)
+    (list "active_cpu_util" sys-current-active-svr-ops-util)
+    (list "active_mem_util" sys-current-active-svr-mem-util)
+    (list "active_net_util" sys-current-active-svr-net-util)
+    (list "active_servers" sys-current-active-servers)
+    (list "current_auto_migrations" sys-current-migration-event-due-to-auto-migration)
+    (list "current_consolidation_migrations" sys-current-migration-event-due-to-consolidation)
+    (list "rescheduled_services" sys-service-reschedule-counter)
+    (list "ops_sla_violations" sys-current-service-ops-sla-vio)
+    (list "mem_sla_violations" sys-current-service-mem-sla-vio)
+    (list "net_sla_violations" sys-current-service-net-sla-vio)
+  )
 
   py:set "servers_raw" servers-data
   py:set "service_raw" service-data

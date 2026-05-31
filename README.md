@@ -40,20 +40,55 @@
 ## 仓库结构 / Repository Map
 
 ```text
-agent_common/      shared schemas, prompts, tracing
-multi_agent/       Phase 2 Planner-Scheduler-Critic control plane
-agent_memory/      Phase 3 working + episodic scheduling memory
+agent_common/      shared schemas, prompts, tracing, Skill base class + registry
+multi_agent/       Planner-Scheduler-Critic control plane (LangGraph)
+agent_memory/      working + episodic scheduling memory (RAG)
 agent_aiops/       realtime AIOps monitor, risk analyzer, guardrails
 agent_sft/         SFT/LoRA GGUF inference adapter with strict fallback
 benchmark/         benchmark matrix, NetLogo smoke experiment config, results
-dataset/           trace-to-SFT dataset builders and LoRA training scripts
+dataset/           trace-to-SFT dataset builders + Unsloth LoRA training scripts
 dashboard/         static dashboard, exporter, live trace server
 demo/              AIOps closed-loop A/B demo
-docs/              architecture notes, development logs, report/demo/resume docs
+cli/               agent-cli (click) unified entry point — train/eval/inference/observe/serve
+mcp_server.py      MCP (Model Context Protocol) server adapter — expose agents to Claude Desktop / Cursor / VSCode
+docs/              architecture notes, development logs, RESUME.md
 scripts/           plotting utilities
-tests/             unit and integration-style regression tests
+tests/             unit and integration-style regression tests (~70 cases)
 traces/            JSONL trace output directory
 ```
+
+### CLI / Skill / MCP 套件
+
+```powershell
+# CLI 套件入口
+python -m cli.main --help
+python -m cli.main list-skills --detail              # 列出已注册 Skill + schema
+python -m cli.main run --skill scheduler.place --inline '{"servers":[[0,80,80,80]],"service":[10,10,10],"aiops_risk_tags":[]}'
+python -m cli.main benchmark --algos all             # 跑 5 seed × 4 dist × 6 算法
+python -m cli.main plot                              # 出 Pareto 散点图
+python -m cli.main build-dataset --version v2 --max-samples 12000
+python -m cli.main inference-smoke                   # SFT 模型单 call 冒烟
+python -m cli.main stats                             # multi_agent + aiops 状态快照
+python -m cli.main mcp-server                        # 启动 MCP server
+
+# MCP server 直接跑（给 Claude Desktop / Cursor 用）
+python mcp_server.py
+```
+
+在 Claude Desktop 中注册（编辑 `claude_desktop_config.json`）：
+
+```json
+{
+  "mcpServers": {
+    "cloud-scheduler": {
+      "command": "python",
+      "args": ["D:\\Users\\12057\\Desktop\\agent\\mcp_server.py"]
+    }
+  }
+}
+```
+
+MCP server 暴露 3 个 tool（`schedule_placement` / `aiops_observe` / `memory_retrieve`）+ 2 个 resource（`scheduler://stats` / `aiops://summary`），符合 Anthropic MCP spec。
 
 ## 架构 / Architecture
 

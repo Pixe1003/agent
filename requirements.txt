@@ -6,3 +6,6 @@ pydantic>=2.8
 ollama>=0.3.3
 numpy>=1.26
 pytest>=9.0
+# CLI + MCP (B 档新增)
+click>=8.1
+mcp>=1.0

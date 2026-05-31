@@ -58,6 +58,16 @@ def test_netlogo_ai_python_scheduler_uses_candidate_server_set():
     assert "if not any? the-server-set [ report nobody ]" in text
 
 
+def test_netlogo_legacy_ai_server_defines_global_state_before_python_call():
+    text = NLOGO.read_text(encoding="utf-8")
+    start = text.index("to-report find-AI-server [ the-server-set the-service ]")
+    end = text.index("to-report find-AI-phase2-server", start)
+    legacy_ai = text[start:end]
+
+    assert "let global-state (list" in legacy_ai
+    assert 'py:set "global_state_raw" global-state' in legacy_ai
+
+
 def test_netlogo_phase2_and_phase3_warmup_use_balanced_fit():
     text = NLOGO.read_text(encoding="utf-8")
 

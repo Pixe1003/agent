@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agent_monitor import CalibratedRiskMonitor, monitor_state_from_record
+
 
 def export_aiops_stream(
     trace_dir: str | Path = "traces",
@@ -30,7 +32,8 @@ def build_aiops_stream(
     trace_path = Path(trace_dir)
     source_files = _aiops_trace_files(trace_path, latest_only=latest_only)
     rows = _read_aiops_trace_rows(source_files, limit=limit)
-    events = [_to_dashboard_event(row) for row in rows]
+    monitor = CalibratedRiskMonitor()
+    events = [_to_dashboard_event(row, monitor=monitor) for row in rows]
     return {
         "algorithm": _resolve_algorithm(algorithm, rows),
         "source": str(trace_path),
@@ -67,12 +70,15 @@ def _read_aiops_trace_rows(paths: list[Path], *, limit: int | None = None) -> li
     return list(rows)
 
 
-def _to_dashboard_event(record: dict[str, Any]) -> dict[str, Any]:
+def _to_dashboard_event(record: dict[str, Any], *, monitor: CalibratedRiskMonitor | None = None) -> dict[str, Any]:
     decision = record.get("decision") or {}
     evidence = decision.get("evidence") or {}
     metrics = evidence.get("metrics") or {}
     tags = list(decision.get("risk_tags") or [])
     active_alerts = list(decision.get("active_alerts") or [])
+    monitor_state = monitor_state_from_record(record)
+    if monitor_state is None and monitor is not None:
+        monitor_state = monitor.observe(decision, None, tick=int(decision.get("tick") or record.get("tick") or 0))
     return {
         "tick": int(decision.get("tick") or record.get("tick") or len(tags)),
         "global_state": {
@@ -92,8 +98,9 @@ def _to_dashboard_event(record: dict[str, Any]) -> dict[str, Any]:
             "recommendations": _recommendations(decision.get("recommendations") or []),
             "guardrails": _guardrails(decision.get("guardrails") or {}),
         },
+        "monitor": monitor_state or _default_monitor_state(),
         "servers": _servers(evidence, metrics),
-        "events": _event_lines(decision, tags, active_alerts),
+        "events": _event_lines(decision, tags, active_alerts, monitor_state),
     }
 
 
@@ -164,7 +171,12 @@ def _servers(evidence: dict[str, Any], metrics: dict[str, Any]) -> list[dict[str
     ]
 
 
-def _event_lines(decision: dict[str, Any], tags: list[str], active_alerts: list[dict[str, Any]]) -> list[str]:
+def _event_lines(
+    decision: dict[str, Any],
+    tags: list[str],
+    active_alerts: list[dict[str, Any]],
+    monitor_state: dict[str, Any] | None = None,
+) -> list[str]:
     lines = []
     if tags:
         lines.append(f"AIOps tags active: {', '.join(tags)}.")
@@ -172,9 +184,28 @@ def _event_lines(decision: dict[str, Any], tags: list[str], active_alerts: list[
         lines.append(f"Active alerts: {', '.join(str(alert.get('tag')) for alert in active_alerts)}.")
     if decision.get("recommendations"):
         lines.append("Recommendation emitted with approval guardrail.")
+    if monitor_state:
+        lines.append(
+            "Monitor shadow state: "
+            f"{monitor_state.get('risk_state_label', 'Normal')} "
+            f"(fallback p={float(monitor_state.get('fallback_probability') or 0.0):.2f})."
+        )
     if not lines:
         lines.append("No elevated AIOps risk signals detected.")
     return lines
+
+
+def _default_monitor_state() -> dict[str, Any]:
+    return {
+        "risk_state_id": 0,
+        "risk_state_label": "Normal",
+        "fallback_probability": 0.02,
+        "escalation_probability": 0.01,
+        "state_confidence": 1.0,
+        "events": [],
+        "transition_reason": "monitor unavailable",
+        "shadow_only": True,
+    }
 
 
 def _normalize_ratio(value: Any) -> float:
