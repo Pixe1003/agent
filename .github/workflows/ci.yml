@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # ===========================================================================
+  # Lint + Test
+  # ===========================================================================
+  test:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        run: |
+          python -m pytest tests -q --tb=short
+
+  # ===========================================================================
+  # Lint Helm chart
+  # ===========================================================================
+  helm-lint:
+    name: helm lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      - name: Lint Helm chart
+        run: helm lint ./charts/agent-infra
+
+      - name: Render Helm chart (sanity)
+        run: helm template agent-infra ./charts/agent-infra > /tmp/k8s.yaml
+        # 不 apply，只验证 templating 通
+
+  # ===========================================================================
+  # Docker build smoke (multi-stage 是否能构建出来)
+  # ===========================================================================
+  docker-build:
+    name: docker build (target=${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [multi_agent, agent_memory, agent_aiops, mcp_server]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.target }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: ${{ matrix.target }}
+          push: false
+          tags: agent/${{ matrix.target }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

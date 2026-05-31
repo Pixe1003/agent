@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'multi_agent'
+    static_configs:
+      - targets: ['multi_agent:8080']
+    metrics_path: /metrics
+
+  - job_name: 'agent_memory'
+    static_configs:
+      - targets: ['agent_memory:8080']
+    metrics_path: /metrics
+
+  - job_name: 'agent_aiops'
+    static_configs:
+      - targets: ['agent_aiops:8080']
+    metrics_path: /metrics
+
+  - job_name: 'agent_sft'
+    static_configs:
+      - targets: ['agent_sft:8080']
+    metrics_path: /metrics
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

@@ -1,0 +1,26 @@
+apiVersion: v2
+name: agent-infra
+description: |
+  Agent Infra Toolkit — Multi-agent control plane + AIOps closed-loop + Self-distilled
+  LLM policy, packaged as a single Helm chart for Kubernetes deployment.
+
+  Components:
+    - multi_agent (Deployment + HPA): Planner-Scheduler-Critic core
+    - agent_memory (StatefulSet + PVC): episodic memory store
+    - agent_aiops (Deployment): rolling-window risk analyzer
+    - agent_sft (Deployment, GPU): LoRA SFT inference adapter
+    - mcp_server (Deployment + Service LB): MCP protocol gateway
+    - dashboard (Deployment + Ingress): static AIOps dashboard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: agent-infra
+home: https://github.com/<your-handle>/agent-infra
+keywords:
+  - agent
+  - llm
+  - aiops
+  - scheduler
+  - mcp
+  - kubernetes

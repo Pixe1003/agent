@@ -1,0 +1,157 @@
+# Default values for agent-infra.
+# 用 `helm install agent-infra ./charts/agent-infra -f values.yaml` 部署。
+# 生产环境用 values-prod.yaml override.
+
+global:
+  imageRegistry: ""    # e.g. "ghcr.io/your-handle/" 留空走本地镜像
+  imageTag: "0.1"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  storageClass: ""     # 留空走 cluster default
+
+# =============================================================================
+# multi_agent — 调度核心
+# =============================================================================
+multiAgent:
+  enabled: true
+  replicas: 3
+  image:
+    repository: agent/multi_agent
+    tag: ""            # 走 global.imageTag
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  env:
+    MODEL_NAME: heuristic
+    ENABLE_TRACING: "false"
+    LOG_LEVEL: info
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPU: 70
+
+# =============================================================================
+# agent_memory — episodic store
+# =============================================================================
+agentMemory:
+  enabled: true
+  replicas: 1     # StatefulSet, 持久化
+  image:
+    repository: agent/memory
+    tag: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  persistence:
+    size: 10Gi
+    storageClass: ""
+
+# =============================================================================
+# agent_aiops — 监控 + 异常检测
+# =============================================================================
+agentAiops:
+  enabled: true
+  replicas: 1
+  image:
+    repository: agent/aiops
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 300m
+      memory: 512Mi
+  env:
+    AIOPS_BACKEND: rule
+    AIOPS_WINDOW: "8"
+    AIOPS_COOLDOWN: "0"
+
+# =============================================================================
+# agent_sft — LLM 推理 (GPU 节点)
+# =============================================================================
+agentSft:
+  enabled: false   # 默认不启 (镜像大 + 需要 GPU)
+  replicas: 1
+  image:
+    repository: agent/sft
+    tag: ""
+  resources:
+    requests:
+      cpu: 2
+      memory: 4Gi
+    limits:
+      cpu: 4
+      memory: 8Gi
+      nvidia.com/gpu: 1
+  nodeSelector:
+    accelerator: nvidia
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  modelPVC:
+    size: 5Gi
+    storageClass: ""
+  env:
+    MODEL_PATH: /var/lib/agent/qwen25-1p5b-sched-merged-q4.gguf
+    N_GPU_LAYERS: "20"
+
+# =============================================================================
+# mcp_server — MCP protocol gateway (对外入口)
+# =============================================================================
+mcpServer:
+  enabled: true
+  replicas: 2
+  image:
+    repository: agent/mcp
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP   # 改成 LoadBalancer 暴露公网
+    port: 8080
+  ingress:
+    enabled: false
+    className: nginx
+    hosts:
+      - host: mcp.example.com
+        paths: [{ path: /, pathType: Prefix }]
+
+# =============================================================================
+# Observability
+# =============================================================================
+observability:
+  prometheus:
+    enabled: true
+    serviceMonitor: true   # 需要 prometheus-operator 已装
+    scrapeInterval: 15s
+  grafana:
+    enabled: false         # 推荐用集群里的 grafana
+
+# =============================================================================
+# Security
+# =============================================================================
+security:
+  networkPolicy:
+    enabled: true           # default deny + 显式 allow
+  rbac:
+    create: true            # 每个 agent 一个 SA + 最小权限 Role
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000

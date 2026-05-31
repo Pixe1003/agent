@@ -9,3 +9,7 @@ pytest>=9.0
 # CLI + MCP (B 档新增)
 click>=8.1
 mcp>=1.0
+# K8s MVP: HTTP server + Prometheus (P1+P2+半 P3)
+fastapi>=0.115
+uvicorn[standard]>=0.32
+prometheus-client>=0.21

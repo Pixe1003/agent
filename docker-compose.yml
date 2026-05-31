@@ -1,0 +1,149 @@
+# Agent Infra Toolkit — 本地 docker-compose 编排
+#
+# 用于：在上 K8s 之前先在本地验证 6 个 service 互联互通。
+#
+# 跑：
+#   docker compose -f docker-compose.yml up --build
+#
+# 验证：
+#   curl http://localhost:8080/healthz                 # multi_agent
+#   curl http://localhost:8081/healthz                 # memory
+#   curl http://localhost:8082/healthz                 # aiops
+#   curl http://localhost:9090/                        # prometheus
+#   curl -X POST http://localhost:8080/schedule \
+#       -H "Content-Type: application/json" \
+#       -d '{"servers":[[0,80,80,80]],"service":[10,10,10],"aiops_risk_tags":[]}'
+
+services:
+
+  multi_agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: multi_agent
+    image: agent/multi_agent:0.1
+    container_name: agent-multi-agent
+    ports:
+      - "8080:8080"
+    environment:
+      MODEL_NAME: heuristic
+      ENABLE_TRACING: "false"
+      LOG_LEVEL: info
+    volumes:
+      - agent-traces:/var/lib/agent/traces
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    networks: [agent-net]
+    restart: unless-stopped
+
+  agent_memory:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: agent_memory
+    image: agent/memory:0.1
+    container_name: agent-memory
+    ports:
+      - "8081:8080"
+    environment:
+      MEMORY_PATH: /var/lib/agent/episodes.jsonl
+      PERSIST_EPISODES: "true"
+    volumes:
+      - agent-memory:/var/lib/agent
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    networks: [agent-net]
+    restart: unless-stopped
+
+  agent_aiops:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: agent_aiops
+    image: agent/aiops:0.1
+    container_name: agent-aiops
+    ports:
+      - "8082:8080"
+    environment:
+      AIOPS_BACKEND: rule
+      AIOPS_WINDOW: "8"
+      AIOPS_COOLDOWN: "0"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    networks: [agent-net]
+    restart: unless-stopped
+
+  # SFT 服务可选 (镜像大 ~800 MB)；本地默认不启
+  agent_sft:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: agent_sft
+    image: agent/sft:0.1
+    container_name: agent-sft
+    ports:
+      - "8083:8080"
+    environment:
+      MODEL_PATH: /var/lib/agent/qwen25-1p5b-sched-merged-q4.gguf
+      N_GPU_LAYERS: "0"   # CPU only by default
+    volumes:
+      - ./dataset/qwen25-1p5b-sched-merged-q4.gguf:/var/lib/agent/qwen25-1p5b-sched-merged-q4.gguf:ro
+    profiles: ["sft"]    # docker compose --profile sft up 才启动
+    networks: [agent-net]
+    restart: unless-stopped
+
+  mcp_server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: mcp_server
+    image: agent/mcp:0.1
+    container_name: agent-mcp
+    stdin_open: true     # MCP stdio transport
+    tty: true
+    networks: [agent-net]
+    profiles: ["mcp"]
+    restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: agent-prom
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks: [agent-net]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: agent-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks: [agent-net]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+volumes:
+  agent-traces:
+  agent-memory:
+  grafana-data:
+
+networks:
+  agent-net:
+    driver: bridge

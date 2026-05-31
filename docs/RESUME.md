@@ -28,6 +28,9 @@
 - **④ AI 能力产品化（呼应"全流程支持、CLI/SKILLS 模块化套件、降低构建门槛"）**
   端到端 **dev-to-prod pipeline + CLI 套件**：**Train**（`dataset/build_sft_dataset --v2` 自动 trace→ChatML SFT，去重 + 平衡；`train_lora_unsloth` 一键 Unsloth + TRL + PEFT LoRA 微调 Qwen2.5-1.5B）→ **Eval**（`benchmark/runner` 5 seed × 4 dist × 7 算法 A/B 框架；`scripts/plot_pareto` matplotlib 自动 Pareto 图）→ **Inference**（`agent_sft` 用 llama-cpp-python 加载 GGUF q4，Windows CUDA DLL 自动注入，CPU/GPU 兼容）→ **Deploy**（**MCP server** 把 multi_agent / agent_aiops / agent_memory 通过标准 Model Context Protocol 暴露，符合 Anthropic MCP spec，任意 MCP host 即接即用；`agent-cli` 提供 list-skills / benchmark / build-dataset / plot / inference-smoke 一键命令行）。
 
+- **⑤ K8s 化部署（呼应"Kubernetes、容器编排、任务调度、观测体系、服务治理"）**
+  完整容器化与 K8s 部署能力：5-target **multi-stage Dockerfile**（非 root 用户 + HEALTHCHECK + distroless 思路），**docker-compose** 编排 6 服务（4 agent + Prometheus + Grafana）做本地验证；**Helm chart** 提供 `Deployment / StatefulSet + PVC / HPA / Service / Ingress / ServiceMonitor / NetworkPolicy（default deny + 显式 allow）/ ServiceAccount + 最小权限 RBAC`；每个 agent 通过 **FastAPI server factory** 自动获得 `/healthz` `/readyz` `/metrics` 三件套，Prometheus 暴露 15+ 业务维度指标（QPS / latency histogram / inflight / readiness）；`agent_sft` 用 `nvidia.com/gpu` resource limit + `nodeSelector` 调度 GPU 节点。完整决策文档 `docs/K8S_DEPLOYMENT_PLAN.md`（14 决策点 + 6 phase 实施路径），上手手册 `docs/K8S_QUICKSTART.md`（kind 集群 10 分钟跑通）。
+
 **项目硬数字（蚂蚁面试官最先扫的）**：
 | 维度 | 数字 |
 |---|---|

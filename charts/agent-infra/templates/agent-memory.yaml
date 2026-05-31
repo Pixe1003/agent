@@ -1,0 +1,94 @@
+{{- if .Values.agentMemory.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-agent-memory
+  labels:
+    {{- include "agent-infra.componentLabels" (dict "root" . "component" "agent-memory") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-agent-memory
+  labels:
+    {{- include "agent-infra.componentLabels" (dict "root" . "component" "agent-memory") | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-agent-memory
+  replicas: {{ .Values.agentMemory.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/component: agent-memory
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name }}
+        app.kubernetes.io/component: agent-memory
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: {{ .Release.Name }}-agent-memory
+      {{- include "agent-infra.podSecurityContext" . | nindent 6 }}
+      containers:
+        - name: agent-memory
+          image: {{ include "agent-infra.image" (dict "root" . "repo" .Values.agentMemory.image.repository "tag" .Values.agentMemory.image.tag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: MEMORY_PATH
+              value: "/var/lib/agent/episodes.jsonl"
+            - name: PERSIST_EPISODES
+              value: "true"
+          volumeMounts:
+            - name: episodes
+              mountPath: /var/lib/agent
+          resources:
+            {{- toYaml .Values.agentMemory.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: episodes
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.agentMemory.persistence.storageClass }}
+        storageClassName: {{ .Values.agentMemory.persistence.storageClass }}
+        {{- else if .Values.global.storageClass }}
+        storageClassName: {{ .Values.global.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.agentMemory.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-agent-memory
+  labels:
+    {{- include "agent-infra.componentLabels" (dict "root" . "component" "agent-memory") | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None    # headless for StatefulSet
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/component: agent-memory
+{{- end }}

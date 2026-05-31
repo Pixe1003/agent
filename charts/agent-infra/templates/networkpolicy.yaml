@@ -1,0 +1,147 @@
+{{- if .Values.security.networkPolicy.enabled }}
+# Default deny: 拒绝所有 pod 的 ingress / egress，下面再开白
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny
+  labels:
+    {{- include "agent-infra.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+  policyTypes: [Ingress, Egress]
+
+# multi_agent 允许：来自 mcp_server / 同 namespace 的 prometheus
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-multi-agent-allow
+  labels:
+    {{- include "agent-infra.componentLabels" (dict "root" . "component" "multi-agent") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/component: multi-agent
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .Chart.Name }}
+              app.kubernetes.io/component: mcp-server
+      ports: [{ port: 8080, protocol: TCP }]
+    - from:                                # Prometheus scrape
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports: [{ port: 8080, protocol: TCP }]
+  egress:
+    - to:                                  # multi_agent → agent_memory
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .Chart.Name }}
+              app.kubernetes.io/component: agent-memory
+      ports: [{ port: 8080, protocol: TCP }]
+    - to:                                  # multi_agent → agent_aiops
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .Chart.Name }}
+              app.kubernetes.io/component: agent-aiops
+      ports: [{ port: 8080, protocol: TCP }]
+    - to:                                  # DNS
+        - namespaceSelector: {}
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+
+# agent_memory 只允许 multi_agent / mcp_server / prometheus 调
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-agent-memory-allow
+  labels:
+    {{- include "agent-infra.componentLabels" (dict "root" . "component" "agent-memory") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/component: agent-memory
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/component, operator: In, values: [multi-agent, mcp-server] }
+      ports: [{ port: 8080, protocol: TCP }]
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports: [{ port: 8080, protocol: TCP }]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+
+# agent_aiops 类似
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-agent-aiops-allow
+  labels:
+    {{- include "agent-infra.componentLabels" (dict "root" . "component" "agent-aiops") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/component: agent-aiops
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/component, operator: In, values: [multi-agent, mcp-server] }
+      ports: [{ port: 8080, protocol: TCP }]
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports: [{ port: 8080, protocol: TCP }]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+
+# mcp_server 允许外部 ingress + 出向访问其他 agent
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-mcp-server-allow
+  labels:
+    {{- include "agent-infra.componentLabels" (dict "root" . "component" "mcp-server") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/component: mcp-server
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - {}    # 允许所有 ingress (LoadBalancer / Ingress 控制器)
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/component, operator: In, values: [multi-agent, agent-memory, agent-aiops, agent-sft] }
+      ports: [{ port: 8080, protocol: TCP }]
+    - to:
+        - namespaceSelector: {}
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+{{- end }}

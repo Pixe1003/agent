@@ -1,18 +1,140 @@
+# =============================================================================
+# Agent Infra Toolkit — .gitignore
+# 思路: 排除生成物/大文件/敏感数据，但保留 README 引用的 benchmark 展示用产物
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
-.pytest_cache/
+*$py.class
+*.so
+.Python
+
+# 虚拟环境 / 嵌入式 Python
 .venv/
 .venv-gpu/
+venv/
+ENV/
+env/
 .python312/
+.python313/
+.python314/
+
+# 缓存目录
 .downloads/
 .tmp/
 .tmp-gpu/
 .pip-cache/
 .pip-cache-gpu/
+.cache/
+
+# Test / coverage
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Packaging
+*.egg-info/
+*.egg
+build/
+dist/
+wheels/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# -----------------------------------------------------------------------------
+# IDEs / editors / OS
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# -----------------------------------------------------------------------------
+# 大文件 / 模型权重（绝对不能进 git，用 LFS 也别）
+# -----------------------------------------------------------------------------
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+*.h5
+*.ckpt
+
+dataset/qwen25-1p5b-sched-lora/
+dataset/qwen25-1p5b-sched-merged*/
+dataset/checkpoint-*/
+
+# 训练用大 dataset（可由 build_sft_dataset 重生成）
+dataset/cloud-sched-sft-v2.jsonl
+dataset/cloud-sched-sft-v3*.jsonl
+# 但保留 v1 (size 小，演示用)
+!dataset/cloud-sched-sft-v1.jsonl
+
+# -----------------------------------------------------------------------------
+# Runtime artifacts
+# -----------------------------------------------------------------------------
+# Trace JSONL 是运行生成的（大且无意义入库），但保留目录占位符
 traces/*.jsonl
-benchmark/results/*.csv
-benchmark/results/*.json
-benchmark/results/*.png
-dataset/*.jsonl
-dataset/*.gguf
+!traces/.gitkeep
+
+# Benchmark 主结果 + Pareto 图保留（README 引用）
+# 中间临时输出不要
+benchmark/results/metrics_first.csv
+benchmark/results/metrics_sft_gpu_smoke.csv
+benchmark/results/*_intermediate.csv
+benchmark/results/*_tmp.csv
+
+# Dashboard 自动导出
 dashboard/aiops-stream.json
+dashboard/*.live.json
+
+# Profile output
+*.prof
+bench-*.prof
+snakeviz-*.html
+
+# Temporary
+tmp_*.json
+tmp_*.txt
+*.log
+*.tmp
+verify_all.ps1
+cleanup_old_phases.ps1
+
+# Docker / K8s 渲染中间产物
+.docker/
+k8s-rendered.yaml
+helm-template-*.yaml
+
+# -----------------------------------------------------------------------------
+# Secrets / credentials（强制防止意外提交）
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets.yaml
+secrets.local.yaml
+*.key
+*.pem
+credentials.json
+ollama-config.json
+
+# Claude Desktop config（含本地绝对路径）
+claude_desktop_config.local.json
+
+# -----------------------------------------------------------------------------
+# Git internal
+# -----------------------------------------------------------------------------
+.git/
